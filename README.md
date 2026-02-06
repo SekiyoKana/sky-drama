@@ -103,9 +103,10 @@
 无需配置复杂的 Python/Node 环境，直接运行：
 
 ```bash
-git clone https://github.com/SekiyoKana/sky-drama.git
+git clone [https://github.com/SekiyoKana/sky-drama.git](https://github.com/SekiyoKana/sky-drama.git)
 cd sky-drama
 docker-compose up -d
+
 ```
 
 访问 `http://localhost:5173` 即可开始创作。
@@ -113,118 +114,137 @@ docker-compose up -d
 ### 方式二：桌面应用 (Beta)
 
 请前往 [Releases](https://github.com/SekiyoKana/sky-drama/releases) 页面下载对应平台的安装包, 或自行打包：
-- **macOS**: `Sky-Drama-x.x.x.dmg`
-- **Windows**: `Sky-Drama-setup-x.x.x.exe`
+
+* **macOS**: `Sky-Drama-x.x.x.dmg` 或使用 `build_app.sh` 自行编译
+* **Windows**: `Sky-Drama-setup-x.x.x.exe` 或使用 `build_app.bat` 自行编译
 
 ### 方式三：源码开发
 
 #### 前置要求
-- Node.js (v20+)
-- Python (v3.12+)
+
+* Node.js (v20+)
+* Python (v3.12+)
+* **FFmpeg (核心组件)**: ⚠️ **必须手动安装**。
+* 请前往 [FFmpeg 官网](https://ffmpeg.org/download.html) 下载。
+* 安装后**必须**将其添加到系统的 `PATH` 环境变量中，确保在终端输入 `ffmpeg` 可直接运行。
+
+
 
 #### 安装步骤
 
 1. **克隆仓库**
-   ```bash
-   git clone https://github.com/SekiyoKana/sky-drama.git
-   cd sky-drama
-   ```
+```bash
+git clone [https://github.com/SekiyoKana/sky-drama.git](https://github.com/SekiyoKana/sky-drama.git)
+cd sky-drama
+
+```
+
 
 2. **后端设置**
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   
-   # 运行服务
-   uvicorn app.main:app --reload
-   ```
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# 运行服务
+uvicorn app.main:app --reload
+
+```
+
 
 3. **前端设置**
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
+```bash
+cd frontend
+npm install
+npm run dev
+
+```
+
+
 
 ---
 
 ## 🛠 技术栈
 
 ### 前端
-- **框架**: Vue 3 (Composition API)
-- **构建工具**: Vite
-- **样式**: TailwindCSS + 自定义软拟态设计 (Neumorphism)
-- **状态管理**: Pinia
-- **路由**: Vue Router
+
+* **框架**: Vue 3 (Composition API)
+* **构建工具**: Vite
+* **样式**: TailwindCSS + 自定义软拟态设计 (Neumorphism)
+* **状态管理**: Pinia
+* **路由**: Vue Router
 
 ### 后端
-- **框架**: FastAPI (Python 3.12+)
-- **数据库**: SQLAlchemy (SQLite default)
-- **AI 集成**: 模块化 "Skills" 架构 (并非claude skills, 未来可能会支持)
-- **验证**: Pydantic
+
+* **框架**: FastAPI (Python 3.12+)
+* **数据库**: SQLAlchemy (SQLite default)
+* **AI 集成**: 模块化 "Skills" 架构 (并非claude skills, 未来可能会支持)
+* **验证**: Pydantic
 
 ## ⚠️ 注意事项
 
-1. **视频模型支持**
-   目前视频生成功能仅深度适配 **Sora 2** 模型。由于目前支持 Sora 2 的第三方 API 厂商数量较少，若您需要接入其他视频模型（如 Runway, Pika 等），请耐心等待后续版本的更新与适配。
+1. **FFmpeg 环境依赖**
+本项目强依赖 FFmpeg 进行视频合成、转码及剪辑。**如果您的电脑未安装 FFmpeg，将无法生成视频**。源码运行用户请务必自行下载并配置环境变量。
+2. **视频模型支持**
+目前视频生成功能仅深度适配 **Sora 2** 模型。由于目前支持 Sora 2 的第三方 API 厂商数量较少，若您需要接入其他视频模型（如 Runway, Pika 等），请耐心等待后续版本的更新与适配。
+3. **自定义 API 适配**
+Sky Drama 默认的 Sora 2 API 策略基于标准的 `/videos` (创建) 和 `/videos/{task_id}` (查询) 接口格式。
+如果您使用的第三方 API 厂商采用了不同的接口规范（例如：流式输出、WebSocket 或非标准端点），您需要自行编写 **转换器 (Formatter)** 进行适配。
+* **现有参考示例**: `backend/app/utils/sora_api/yi.py` (针对流式接口的适配实现)
+* **如何添加新转换器**:
+请在 `backend/app/utils/sora_api/` 目录下创建一个新的 Python 文件（例如 `my_provider.py`），并继承 `Base` 类实现以下逻辑：
+```python
+# backend/app/utils/sora_api/my_provider.py
+from .base import Base
+from typing import List, Any, Dict
 
-2. **自定义 API 适配**
-   Sky Drama 默认的 Sora 2 API 策略基于标准的 `/videos` (创建) 和 `/videos/{task_id}` (查询) 接口格式。
-   
-   如果您使用的第三方 API 厂商采用了不同的接口规范（例如：流式输出、WebSocket 或非标准端点），您需要自行编写 **转换器 (Formatter)** 进行适配。
-   
-   - **现有参考示例**: `backend/app/utils/sora_api/yi.py` (针对流式接口的适配实现)
-   - **如何添加新转换器**:
-     请在 `backend/app/utils/sora_api/` 目录下创建一个新的 Python 文件（例如 `my_provider.py`），并继承 `Base` 类实现以下逻辑：
+class MyProvider(Base):
+    name = "MyProvider"  # 在前端设置界面中显示的名称
+    base_url_keyword = "api.myprovider.com"  # 用于自动识别的 URL 特征
 
-     ```python
-     # backend/app/utils/sora_api/my_provider.py
-     from .base import Base
-     from typing import List, Any, Dict
+    def create(self, base_url: str, apikey: str, model: str, prompt: str, seconds: int, size: str, watermark: bool, images: List[Any]) -> str:
+        # 1. 设置认证信息
+        self.set_auth(base_url, apikey)
+        # 2. 调用您的第三方 API 创建任务
+        # ...
+        # 3. 返回任务 ID (task_id)
+        return "task_123456"
 
-     class MyProvider(Base):
-         name = "MyProvider"  # 在前端设置界面中显示的名称
-         base_url_keyword = "api.myprovider.com"  # 用于自动识别的 URL 特征
+    def _query_status(self, task_id: str) -> Dict[str, Any]:
+        # 1. 调用第三方 API 查询任务状态
+        # ...
+        # 2. 返回统一格式的状态字典
+        return {
+            "status": "completed", # 或 "processing", "failed"
+            "video_url": "https://...",
+            "progress": 100,
+            "fail_reason": None
+        }
 
-         def create(self, base_url: str, apikey: str, model: str, prompt: str, seconds: int, size: str, watermark: bool, images: List[Any]) -> str:
-             # 1. 设置认证信息
-             self.set_auth(base_url, apikey)
-             # 2. 调用您的第三方 API 创建任务
-             # ...
-             # 3. 返回任务 ID (task_id)
-             return "task_123456"
+```
 
-         def _query_status(self, task_id: str) -> Dict[str, Any]:
-             # 1. 调用第三方 API 查询任务状态
-             # ...
-             # 2. 返回统一格式的状态字典
-             return {
-                 "status": "completed", # 或 "processing", "failed"
-                 "video_url": "https://...",
-                 "progress": 100,
-                 "fail_reason": None
-             }
-     ```
+
+
+
 
 ## 🗺️ 路线图
-- [ ] **国际化I18N**: 支持中、英、日三国语言。
-- [ ] **本地模型集成**: 支持通过 Ollama 调用本地大语言模型。
-- [ ] **高级视频生成**: 支持更多视频模型的首尾帧控制、多图参考生成等高级功能。
-- [ ] **时间轴增强**: 支持在时间轴剪辑中添加过渡动画效果。
-- [ ] **深度日志**: 提供更详细的 Console 日志和导演工作台 (Director Workbench) 执行记录，便于调试与回溯。
-- [ ] **工程管理**: 支持工程文件的完整导出、迁移及备份。
-- [ ] **自定义创作**: 支持自定义提示词 (Prompt) 模板与工作流。
-- [ ] **工具箱扩展**: 集成更多的 AI 辅助工具。
-- [ ] **多模型支持**: 在 Sora, Runway, Pika，keling，vidu，jimeng 等视频模型间无缝切换。
-- [ ] **声音克隆**: 为角色生成专属 AI 配音。
+
+* [ ] **国际化I18N**: 支持中、英、日三国语言。
+* [ ] **本地模型集成**: 支持通过 Ollama 调用本地大语言模型。
+* [ ] **高级视频生成**: 支持更多视频模型的首尾帧控制、多图参考生成等高级功能。
+* [ ] **时间轴增强**: 支持在时间轴剪辑中添加过渡动画效果。
+* [ ] **深度日志**: 提供更详细的 Console 日志和导演工作台 (Director Workbench) 执行记录，便于调试与回溯。
+* [ ] **工程管理**: 支持工程文件的完整导出、迁移及备份。
+* [ ] **自定义创作**: 支持自定义提示词 (Prompt) 模板与工作流。
+* [ ] **工具箱扩展**: 集成更多的 AI 辅助工具。
+* [ ] **多模型支持**: 在 Sora, Runway, Pika，keling，vidu，jimeng 等视频模型间无缝切换。
+* [ ] **声音克隆**: 为角色生成专属 AI 配音。
 
 ## 📄 许可证
 
 本项目采用 MIT 许可证。
 
-
 <div align="center">
-   <img src="https://api.star-history.com/svg?repos=SekiyoKana/sky-drama&type=Date" style="margin: 0 auto" width="600" />
+<img src="https://api.star-history.com/svg?repos=SekiyoKana/sky-drama&type=Date" style="margin: 0 auto" width="600" />
 </div>
