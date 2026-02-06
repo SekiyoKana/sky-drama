@@ -1,0 +1,697 @@
+import json
+import os
+import time
+import uuid
+import re
+import requests
+import logging
+import tempfile
+import shutil
+from typing import Any, Dict, List, Optional, Union
+from openai import OpenAI
+from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
+
+from app.models.apikey import ApiKey
+from app.models.asset import Asset
+from app.skills.loader import execute_skill
+from app.utils.image_utils import combine_image, to_base64
+from app.schemas.style import StyleBase
+from app.utils.sora_api.main import SoraApiFormatter
+from app.core.config import settings
+
+
+class AIEngine:
+    def __init__(self, db, user, ai_config):
+        self.db = db
+        self.user = user
+        self.config = ai_config or {}
+        client, model, _, _, _ = self._init_client_and_model()
+        self.client = client
+        self.model_name = model
+        self.episode = None
+
+    def set_context(self, episode):
+        self.episode = episode
+
+    def _format_sse(self, event_type: str, data: Any):
+        payload = json.dumps({"type": event_type, "payload": data}, ensure_ascii=False)
+        return f"data: {payload}\n\n"
+        
+    def _resolve_local_path(self, path_or_url: str) -> Optional[str]:
+        """
+        核心修复：将 URL 或 相对路径 统一转换为 可读取的本地绝对路径
+        """
+        if not path_or_url:
+            return None
+            
+        # 1. 如果是网络 URL -> 下载到临时文件
+        if path_or_url.startswith("http"):
+            try:
+                # logger.info(f"Downloading remote resource: {path_or_url}")
+                res = requests.get(path_or_url, stream=True, timeout=15)
+                if res.status_code == 200:
+                    ext = path_or_url.split('.')[-1].split('?')[0]
+                    if len(ext) > 4 or "/" in ext: ext = "png"
+                    
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
+                    with open(tmp.name, 'wb') as f:
+                        shutil.copyfileobj(res.raw, f)
+                    return tmp.name
+                else:
+                    logger.error(f"Failed to download image {path_or_url}: Status {res.status_code}")
+                    return None
+            except Exception as e:
+                logger.error(f"Error downloading image {path_or_url}: {e}")
+                return None
+
+        # 2. 如果是本地绝对路径 -> 直接返回
+        if os.path.isabs(path_or_url) and os.path.exists(path_or_url):
+            return path_or_url
+
+        # 3. 如果是 /assets/xxx 相对路径 -> 映射到 ASSETS_DIR
+        assets_dir = settings.ASSETS_DIR
+
+        # 移除开头的 / 或 \ 或 .
+        clean_path = path_or_url.lstrip("/\\.")
+        # 如果路径里包含 assets/ 前缀，也去掉
+        if clean_path.startswith("assets/") or clean_path.startswith("assets\\"):
+            clean_path = clean_path[7:]
+            
+        local_path = os.path.join(assets_dir, clean_path)
+        
+        if os.path.exists(local_path):
+            return local_path
+            
+        return path_or_url
+
+    def _init_client_and_model(self, type="text"):
+        config = self.config.get(type, {})
+
+        if not config.get("key_id"):
+            config = self.config.get("text", {})
+
+        key_id = config.get("key_id")
+        model_name = config.get("model")
+
+        if not key_id:
+            return None, None, None, None, None
+
+        api_key_record = (
+            self.db.query(ApiKey)
+            .filter(ApiKey.id == key_id, ApiKey.user_id == self.user.id)
+            .first()
+        )
+
+        if not api_key_record:
+            raise HTTPException(status_code=404, detail="API Key 不存在")
+        
+        # 直接使用明文 Key
+        real_key = api_key_record.encrypted_key
+        # try:
+        #     real_key = decrypt_data(api_key_record.encrypted_key)
+        # except:
+        #     raise HTTPException(status_code=500, detail="Key 解密失败")
+
+        base_url = api_key_record.base_url or "https://api.openai.com/v1"
+
+        client = OpenAI(api_key=real_key, base_url=base_url)
+        return client, model_name, real_key, base_url, api_key_record
+
+    def generate_media_stream(self, media_type: str, prompt: str, style: StyleBase = None, data: dict = None):
+        yield self._format_sse("status", f"Starting {media_type} generation...")
+        yield self._format_sse("backend_log", f"--- [Backend] Starting {media_type} generation ---")
+        yield self._format_sse("backend_log", f"Prompt: {prompt}")
+
+        client, model_name, real_key, base_url, api_key_record = self._init_client_and_model(
+            type=media_type
+        )
+        if not real_key:
+            yield self._format_sse(
+                "error", f"No API configuration found for {media_type}"
+            )
+            return
+
+        try:
+            yield self._format_sse("status", "Requesting generation API...")
+
+            headers = {
+                "Authorization": f"Bearer {real_key}",
+                "Content-Type": "application/json",
+            }
+
+            if media_type == "video":
+                headers.pop("Content-Type", None)
+
+                target_model = model_name if model_name else "sora-2"
+                endpoint = api_key_record.video_endpoint if api_key_record else "/videos"
+                base_url_str = str(base_url).rstrip('/')
+                api_url = f"{base_url_str}{endpoint}"
+                
+                # [关键修复] 解析 input_reference URL 为本地路径
+                # 之前这里直接用了 URL，导致 os.path.join 报错
+                raw_ref = data.get("input_reference")
+                local_ref = self._resolve_local_path(raw_ref)
+                
+                # 如果解析失败（比如下载失败），回退到原始值，虽然可能会报错，但至少尝试了
+                final_ref = local_ref if local_ref else raw_ref
+                
+                images = [{ "data": [final_ref], "direction": "horizontal"}] if final_ref else []
+                
+                formatter = SoraApiFormatter.search(base_url_str)
+                if formatter:
+                    yield self._format_sse("status", f"Delegating to {formatter.name} formatter...")
+                    
+                    try:
+                        task_id = formatter.create(
+                            base_url=base_url_str,
+                            apikey=real_key,
+                            model=target_model,
+                            prompt=f'{prompt}',
+                            seconds=15,
+                            size="1280x720",
+                            watermark=False,
+                            images=[final_ref] if final_ref else []
+                        )
+                        
+                        yield self._format_sse("progress", 10)
+                        yield self._format_sse("status", f"Task created: {task_id}, queuing...")
+
+                        def status_listener(status, data):
+                            progress = data.get("progress", 0)
+                            if progress < 10: progress = 10
+                            if progress > 99: progress = 99
+                            logger.info(f"[Formatter: {status}] Progress: {progress}%")
+                        
+                        video_url = formatter.queue(task_id, status_listener) 
+                        
+                        image_url = video_url
+                        ext = "mp4"
+
+                    except Exception as e:
+                        yield self._format_sse("error", f"Formatter Error: {str(e)}")
+                        return
+
+                else:
+                    # 使用已经下载好的 local_ref 传给 combine_image
+                    img_stream, mime_type = combine_image(images, direction='vertical')
+                    ext = "png" if mime_type == "image/png" else "jpg"
+                    filename = f"template.{ext}"
+
+                    form_data = {
+                        "model": target_model,
+                        "prompt": f'{prompt}',
+                        "seconds": "15",
+                        "size": "1280x720",
+                        "watermark": False,
+                    }
+
+                    files_payload = {
+                        "input_reference": (filename, img_stream, mime_type)
+                    }
+
+                    yield self._format_sse("status", f"Submitting video task to {target_model}...")
+                    response = requests.post(
+                        api_url,
+                        data=form_data,
+                        files=files_payload,
+                        headers=headers,
+                        timeout=60000
+                    )
+
+                    if response.status_code != 200:
+                        yield self._format_sse("error", f"Video Provider Error: {response.text}")
+                        return
+
+                    task_data = response.json()
+                    task_id = task_data.get("id") or task_data.get("detail", {}).get("id")
+
+                    if not task_id:
+                            yield self._format_sse("error", f"No task ID returned: {str(task_data)}")
+                            return
+                    
+                    yield self._format_sse("progress", 10)
+                    
+                    poll_url = f"{str(base_url).rstrip('/')}{endpoint}/{task_id}"
+                    
+                    max_retries = 10000
+                    for i in range(max_retries):
+                        time.sleep(5)
+                        try:
+                            poll_res = requests.get(poll_url, headers=headers, timeout=30)
+                            if poll_res.status_code != 200:
+                                continue
+                                
+                            poll_data = poll_res.json()
+                            log_msg = f"[{poll_data.get('model')} - {poll_data.get('id')}]｜状态 - {poll_data.get('status')} ｜进度 - {poll_data.get('progress', 0)}%"
+                            logger.info(f"\n------------------------------------\n{log_msg}\n------------------------------------\n")
+                            yield self._format_sse("backend_log", log_msg)
+                            
+                            status = poll_data.get("status")
+                            yield self._format_sse("progress", 10 + int((i / max_retries) * 80))
+                            
+                            if status == "completed":
+                                video_url = poll_data.get("video_url")
+                                if not video_url:
+                                    video_url = poll_data.get("detail", {}).get("draft_info", {}).get("downloadable_url")
+                                
+                                if not video_url:
+                                        yield self._format_sse("error", "Video completed but URL not found")
+                                        return
+                                
+                                yield self._format_sse("status", "Downloading video...")
+                                image_url = video_url 
+                                ext = "mp4"
+                                break
+                            elif status == "failed":
+                                yield self._format_sse("error", f"Video generation failed: {poll_data.get('fail_reason', 'Unknown')}")
+                                return
+                            else:
+                                yield self._format_sse("status", f"Generating video... ({status})")
+                        except Exception as e:
+                            logger.error(f"Polling error: {e}")
+                            yield self._format_sse("backend_log", f"Polling error: {str(e)}")
+                            continue
+                    else:
+                        yield self._format_sse("error", "Video generation timed out")
+                        return
+
+            else:
+                target_model = model_name if model_name else "nano-banana"
+                endpoint = api_key_record.image_endpoint if api_key_record else "/images/generations"
+                api_url = f"{str(base_url).rstrip('/')}{endpoint}"
+                ext = "png"
+
+                yield self._format_sse("backend_log", f"Image Model: {target_model}")
+                yield self._format_sse("backend_log", f"Image Endpoint: {api_url}")
+
+                yield self._format_sse("progress", 20)
+                
+                payload = {
+                    "model": target_model,
+                    "prompt": prompt,
+                    "size": "16x9",
+                    "n": 1,
+                }
+    
+                if data and "category" in data:
+                    category = data["category"]
+                    file_path = ""
+                    
+                    assets_dir = settings.ASSETS_DIR
+                    
+                    match category:
+                        case "character":
+                            file_path = os.path.join(assets_dir, "static", "character_template.png")
+                        case "scene":
+                            file_path = os.path.join(assets_dir, "static", "scene_template.png")
+                        case "storyboard":
+                            file_path = os.path.join(assets_dir, "static", "storyboard_9_template.png")
+
+                    image_base64 = to_base64(file_path)
+                    
+                    style_local_path = self._resolve_local_path(style.image_url) if style and style.image_url else None
+                    style_image_base64 = to_base64(style_local_path) if style_local_path else None
+
+                    if not image_base64:
+                        yield self._format_sse("error", f"Failed to load template image at {file_path}")
+                        return
+
+                    if category == "storyboard":
+                        images = []
+                        if data and data.get("context_characters"):
+                            raw_char_imgs = [char.get("image_url") for char in data.get("context_characters")]
+                            char_imgs = [self._resolve_local_path(url) for url in raw_char_imgs]
+                            char_imgs = [p for p in char_imgs if p]
+                            images.append({ "data": char_imgs, "direction": "horizontal" })
+                            
+                        if data and data.get("context_scenes"):
+                            raw_scene_imgs = [scene.get("image_url") for scene in data.get("context_scenes")]
+                            scene_imgs = [self._resolve_local_path(url) for url in raw_scene_imgs]
+                            scene_imgs = [p for p in scene_imgs if p]
+                            images.append({ "data": scene_imgs, "direction": "horizontal" })
+
+                        if len(images) == 0:
+                            yield self._format_sse("error", "请检查角色、场景以及分镜都已生成完毕")
+                            return
+                        
+                        combine_path, _ = combine_image(images, direction='vertical', return_type='path')
+                        temp_image_base64 = to_base64(combine_path)
+                        payload["image"] = [style_image_base64, temp_image_base64, image_base64] if style_image_base64 else [temp_image_base64, image_base64]
+                        payload["prompt"] = f"参考第一张图片的图片作画风格、第二张图片的人设以及场景，以第三张图片作为模板生成目标图片，并始终保持模板的第一格为黑幕： {prompt}" if style_image_base64 else f"参考第一张图片的人设以及场景，使用第二张图片作为模板生成目标图片，并始终保持模板的第一格为黑幕: {prompt}"
+                    else:
+                        payload["image"] = [style_image_base64, image_base64] if style_image_base64 else [image_base64]
+                        payload["prompt"] = f"使用第一张图片的图片风格，以第二张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}" if style_image_base64 else f"使用这张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。{prompt}"
+    
+                yield self._format_sse("backend_log", "Submitting image generation request...")
+                response = requests.post(
+                    api_url, json=payload, headers=headers, timeout=3000
+                )
+                yield self._format_sse("backend_log", f"Response Status: {response.status_code}")
+    
+                if response.status_code != 200:
+                    yield self._format_sse("error", f"Provider Error: {response.text}")
+                    return
+    
+                data = response.json()
+    
+                yield self._format_sse("progress", 50)
+                yield self._format_sse("status", "Processing response...")
+    
+                image_url = None
+                if (
+                    "data" in data
+                    and isinstance(data["data"], list)
+                    and len(data["data"]) > 0
+                ):
+                    image_url = data["data"][0].get("url")
+    
+                if not image_url:
+                    yield self._format_sse(
+                        "error", f"No image URL in response: {str(data)}"
+                    )
+                    return
+
+            yield self._format_sse("status", "Downloading asset...")
+            img_res = requests.get(image_url, timeout=600)
+            if img_res.status_code != 200:
+                yield self._format_sse("error", "Failed to download asset")
+                return
+
+            yield self._format_sse("progress", 90)
+            filename = f"{uuid.uuid4()}.{ext}"
+            
+            assets_dir = settings.ASSETS_DIR
+            if not os.path.exists(assets_dir): os.makedirs(assets_dir)
+                
+            filepath = os.path.join(assets_dir, filename)
+            logger.info(f"💾 Saving generated asset to: {filepath}")
+
+            with open(filepath, "wb") as f:
+                f.write(img_res.content)
+
+            asset_url = f"/assets/{filename}"
+            new_asset = Asset(
+                episode_id=self.episode.id if self.episode else 0,
+                type=media_type,
+                url=asset_url,
+                meta_data={"prompt": prompt, "source_url": image_url},
+            )
+            self.db.add(new_asset)
+            self.db.commit()
+            self.db.refresh(new_asset)
+            
+            # 返回完整的 HTTP URL 给前端，确保不出现 404
+            full_display_url = f"http://127.0.0.1:11451{asset_url}"
+
+            yield self._format_sse("progress", 100)
+            yield self._format_sse("status", "Completed")
+            yield self._format_sse(
+                "finish",
+                {
+                    "id": new_asset.id,
+                    "url": full_display_url,
+                    "type": media_type,
+                    "prompt": prompt,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Generation Loop Error: {e}")
+            yield self._format_sse("error", f"Generation failed: {str(e)}")
+
+    def generate_stream(self, prompt: str, tool_name: str, **kwargs):
+        client, model, _, _, _ = self._init_client_and_model(type="text")
+        if not client:
+            yield self._format_sse("error", "No API Key configured for text generation")
+            return
+        self.client = client
+        self.model_name = model
+
+        yield self._format_sse("status", "Initializing AI Director...")
+
+        try:
+            skill_args = {"prompt": prompt}
+
+            if "title" in kwargs:
+                skill_args["title"] = kwargs["title"]
+            if "description" in kwargs:
+                skill_args["description"] = kwargs["description"]
+            elif prompt:
+                skill_args["description"] = prompt
+
+            for k, v in kwargs.items():
+                if k not in skill_args and k not in ["title", "description"]:
+                    skill_args[k] = v
+
+            logger.info(f"[AI Director] Executing skill: {tool_name}")
+            logger.info(f"[AI Director] Arguments keys: {list(skill_args.keys())}")
+
+            director_gen = execute_skill(
+                tool_name, skill_args, client=self.client, model_name=self.model_name
+            )
+
+            final_output_accumulator = yield from self._priint_at_director_console(tool_name, director_gen)
+
+            if not final_output_accumulator:
+                yield self._format_sse("error", "No output from AI Director")
+                return
+
+            yield from self._submit(
+                tool_name=tool_name,
+                final_output_accumulator=final_output_accumulator,
+            )
+
+        except Exception as e:
+            yield self._format_sse("error", f"Execution error: {str(e)}")
+
+    def _priint_at_director_console(self, tool_name, director_gen):
+        final_output_accumulator = ""
+        
+        logger.info(f"[AI Director] Listening to stream from {tool_name}...")
+        
+        start_time = time.time()
+        last_progress = 0
+
+        for chunk in director_gen:
+            # Time-based progress simulation: 1% per second
+            elapsed = time.time() - start_time
+            current_progress = min(int(elapsed), 98) # Cap at 98%
+            
+            if current_progress > last_progress:
+                yield self._format_sse("progress", current_progress)
+                last_progress = current_progress
+
+            # logger.debug(f"[Stream Chunk] {chunk}") # Verbose debug
+            if not isinstance(chunk, dict):
+                continue
+
+            msg_type = chunk.get("type")
+            content = chunk.get("content", "")
+
+            if msg_type == "status":
+                yield self._format_sse("status", content)
+                yield self._format_sse("backend_log", f"[{tool_name}] Status: {content}")
+            elif msg_type == "token":
+                final_output_accumulator += content
+                yield self._format_sse("thought", content)
+            elif msg_type == "error":
+                logger.error(f"[{tool_name}] Error: {content}")
+                yield self._format_sse("error", f"[{tool_name}] {content}")
+                yield self._format_sse("backend_log", f"[{tool_name}] ERROR: {content}")
+
+        logger.info(f"[AI Director] Stream finished. Total length: {len(final_output_accumulator)}")
+        return final_output_accumulator
+
+    def _get_json_block(self, text=None):
+        if not text:
+            return None
+        json_match = None
+        try:
+            json_blocks = re.findall(
+                r"```json\s*([\s\S]*?)\s*```", text
+            )
+
+            merged_data = {}
+            if json_blocks:
+                for block in json_blocks:
+                    try:
+                        clean_block = re.sub(r"<\|.*?\|>", "", block)
+                        data = json.loads(clean_block)
+                        if isinstance(data, dict):
+                            merged_data.update(data)
+                    except:
+                        pass
+
+                if merged_data:
+                    json_match = json.dumps(merged_data)
+            else:
+                clean_text = re.sub(r"<\|.*?\|>", "", text)
+                clean_text = clean_text.replace("```json", "").replace(
+                    "```", ""
+                )
+                parsed = json.loads(clean_text)
+                json_match = json.dumps(parsed)
+
+        except:
+            pass
+
+        return json_match
+
+    def _get_tag_block(self, text=None, tag_map=None):
+        if not text or not tag_map:
+            return None
+        tag_match: Dict[str, Union[str, List[str]]] = {}
+        for tag, key in tag_map.items():
+            pattern = rf"<\|{tag}\|>([\s\S]*?)<\|{tag}_END\|>"
+            matches = re.findall(pattern, text)
+            
+            if matches:
+                cleaned_matches = [m.strip() for m in matches]
+                if len(cleaned_matches) > 1:
+                    tag_match[key] = cleaned_matches
+                else:
+                    tag_match[key] = cleaned_matches[0]
+                    
+        return tag_match if tag_match.keys() else None
+
+    def _inject_ids(self, data_list, prefix):
+        copy_data = data_list.copy()
+        if isinstance(copy_data, list):
+            for i, item in enumerate(copy_data):
+                if isinstance(item, dict) and "id" not in item:
+                    item["id"] = (
+                        f"{prefix}_{int(time.time())}_{i}_{str(uuid.uuid4())[:4]}"
+                    )
+        return copy_data
+
+    def _submit(self, tool_name: str, final_output_accumulator: str):
+        try:
+            if not final_output_accumulator:
+                raise ValueError(f"[{tool_name}] 模型未返回任何内容！")
+            
+            yield self._format_sse("status", f"[{tool_name}] 内容格式化...")
+
+            # short_video_storyboard_maker"
+            if tool_name == "short-video-storyboard-maker":
+                json_match = self._get_json_block(text=final_output_accumulator)
+                tag_match = self._get_tag_block(text=final_output_accumulator, tag_map={
+                    "STORYBOARD": "storyboard",
+                })
+                if not tag_match:
+                    raise ValueError(f"[{tool_name}] 模型未返回任何内容或格式错误！")
+                if not json_match:
+                    raise ValueError(f"[{tool_name}] 模型返回内容格式错误！")
+                
+                try:
+                    parsed_data = json.loads(json_match)
+                    if "storyboard" in parsed_data:
+                        parsed_data["storyboard"] = self._inject_ids(parsed_data["storyboard"], "shot")
+                    json_match = json.dumps(parsed_data)
+                except:
+                    pass
+
+                yield self._format_sse("finish", {"json": json_match})
+                yield self._format_sse("status", "Completed")
+                yield from self.save_episode(key="generated_script.storyboard", value=json.loads(json_match)["storyboard"], type='add')
+                
+            # short_video_screenwriter
+            elif tool_name == "short-video-screenwriter":
+                json_match = self._get_json_block(text=final_output_accumulator)
+                tag_match = self._get_tag_block(text=final_output_accumulator, tag_map={
+                    "META": "meta",
+                    "OUTLINE": "outline",
+                    "CHARACTERS": "characters",
+                    "SCENES": "scenes",
+                    "STORYBOARD": "storyboard",
+                })
+                if not tag_match:
+                    raise ValueError(f"[{tool_name}] 模型未返回任何内容或格式错误！")
+                if not json_match:
+                    raise ValueError(f"[{tool_name}] 模型返回内容格式错误！")
+                
+                try:
+                    parsed_data = json.loads(json_match)
+                    if "characters" in parsed_data:
+                        parsed_data["characters"] = self._inject_ids(parsed_data["characters"], "char")
+                    if "scenes" in parsed_data:
+                        parsed_data["scenes"] = self._inject_ids(parsed_data["scenes"], "scene")
+                    if "storyboard" in parsed_data:
+                        parsed_data["storyboard"] = self._inject_ids(parsed_data["storyboard"], "shot")
+                    json_match = json.dumps(parsed_data)
+                except:
+                    pass
+
+                yield self._format_sse("finish", {"json": json_match})
+                yield self._format_sse("status", "Completed")
+                self.save_episode(key="generated_script", value=json.loads(json_match))
+            
+            # other tools
+            else:
+                yield self._format_sse("text_finish", {"text": final_output_accumulator}) 
+
+        except Exception as e:
+            yield self._format_sse("error", f"{str(e)}")
+    
+    def save_episode(self, key: str, value: any, type: str = 'replace'):
+        try:
+            if not self.episode:
+                raise ValueError("💾 无法保存剧集，剧本不存在.")
+            
+            current_config = self.episode.ai_config if self.episode.ai_config else {}
+            key_path = key.split(".")
+
+            def update_recursive(current_layer, remaining_keys):
+                if isinstance(current_layer, dict):
+                    new_layer = current_layer.copy()
+                else:
+                    new_layer = {}
+
+                current_key = remaining_keys[0]
+                is_target = len(remaining_keys) == 1
+
+                if is_target:
+                    if type == 'replace':
+                        new_layer[current_key] = value
+                    
+                    elif type == 'add':
+                        existing_val = new_layer.get(current_key)
+                        items_to_add = value if isinstance(value, list) else [value]
+
+                        if existing_val is None:
+                            new_layer[current_key] = items_to_add
+                        elif isinstance(existing_val, list):
+                            new_list = list(existing_val)
+                            new_list.extend(items_to_add)
+                            new_layer[current_key] = new_list
+                        else:
+                            raise ValueError(f"类型错误: key '{key}' 对应的值不是数组，无法执行 'add' 操作.")
+                    else:
+                        raise ValueError(f"未知的操作类型: {type}")
+                    
+                    return new_layer
+                
+                else:
+                    next_data = new_layer.get(current_key, {})
+                    if next_data and not isinstance(next_data, dict):
+                        raise ValueError(f"路径冲突: '{current_key}' 已经在配置中存在且不是字典，无法继续深入.")
+                    new_layer[current_key] = update_recursive(next_data, remaining_keys[1:])
+                    return new_layer
+
+            new_root_config = update_recursive(current_config, key_path)
+
+            self.episode.ai_config = new_root_config
+            self.db.add(self.episode)
+            self.db.commit()
+            self.db.refresh(self.episode)
+            
+            action_text = "更新" if type == 'replace' else "追加"
+            yield self._format_sse(
+                "status", f"💾 剧本配置已{action_text}: {key}"
+            )
+            
+        except Exception as e:
+            yield self._format_sse(
+                "error", f"保存失败: {str(e)}"
+            )
