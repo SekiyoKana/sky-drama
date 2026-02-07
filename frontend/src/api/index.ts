@@ -154,6 +154,10 @@ export const episodeApi = {
                 onProgress(percentCompleted);
             }
         }
+    }),
+  exportStoryboardData: (projectId: number, episodeId: number) => 
+    request.get(`/projects/${projectId}/episodes/${episodeId}/export/storyboard_data`, { 
+        responseType: 'blob'
     })
 }
 

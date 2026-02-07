@@ -2,7 +2,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft, Download, RotateCcw, Settings2, Loader2, TerminalSquare, Sparkles, Film, ChevronDown, Package, X
+  ArrowLeft, Download, RotateCcw, Settings2, Loader2, TerminalSquare, Sparkles, Film, ChevronDown, Package, X, FileText
 } from 'lucide-vue-next'
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
@@ -634,6 +634,73 @@ const handleExportAssets = async () => {
   }
 }
 
+const handleExportStoryboard = async () => {
+  showExportMenu.value = false
+  if (!episode.value) return
+  message.info('正在导出分镜数据，请稍候...')
+
+  try {
+    const blob = await episodeApi.exportStoryboardData(projectId, episodeId)
+    if (!blob) throw new Error("Empty response")
+
+    const filename = `${episode.value.title}_分镜数据.zip`
+
+    try {
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{
+            description: 'ZIP Archive',
+            accept: { 'application/zip': ['.zip'] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        message.success('保存成功');
+        return;
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.warn('File System Access API failed, falling back to download:', err);
+    }
+
+    if (isTauri) {
+      const arrayBuffer = await blob.data();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const savePath = await save({
+          defaultPath: filename,
+          filters: [{
+              name: 'Zip Archive',
+              extensions: ['zip']
+          }, {
+              name: 'All Files',
+              extensions: ['*']
+          }]
+      });
+      if (!savePath) {
+          console.log('用户取消了保存');
+          return;
+      }
+      await writeFile(savePath, uint8Array);
+      console.log(`文件已成功保存到: ${savePath}`);
+    } else {
+      const url = window.URL.createObjectURL(new Blob([blob as any]))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url) 
+    }
+    message.success('已开始下载')
+  } catch (e) {
+    console.error(e)
+    message.error('导出分镜数据失败')
+  }
+}
+
 const handleExportVideo = async () => {
   showExportMenu.value = false
   if (!episode.value) return
@@ -838,6 +905,10 @@ onUnmounted(() => {
               <button @click="handleExportAssets"
                 class="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/50 hover:shadow-sm transition-all text-xs font-bold text-gray-600 active:scale-95">
                 <Package class="w-4 h-4 text-orange-500" /> 导出素材库
+              </button>
+              <button @click="handleExportStoryboard"
+                class="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/50 hover:shadow-sm transition-all text-xs font-bold text-gray-600 active:scale-95">
+                <FileText class="w-4 h-4 text-purple-500" /> 导出分镜数据
               </button>
               <div class="h-px bg-gray-200/50 mx-2"></div>
               <button @click="handleExportVideo"

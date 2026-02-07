@@ -462,6 +462,117 @@ async def export_episode_assets(
         }
     )
 
+@router.get("/{project_id}/episodes/{episode_id}/export/storyboard_data")
+async def export_episode_storyboard_data(
+    project_id: int,
+    episode_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """
+    导出分镜数据：以文件夹形式返回每个分镜的图片和 prompt.txt
+    """
+    project = db.query(Project).filter(Project.id == project_id, Project.user_id == current_user.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    episode = db.query(Episode).filter(Episode.id == episode_id, Episode.project_id == project_id).first()
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    config = episode.ai_config or {}
+    script = config.get("generated_script", {})
+    storyboards = script.get("storyboard", [])
+
+    if not storyboards:
+        raise HTTPException(status_code=400, detail="No storyboard data found")
+
+    # 构建 ID -> Name 映射表
+    entity_map = {}
+    for char in script.get("characters", []):
+        if char.get("id") and char.get("name"):
+            entity_map[char["id"]] = char["name"]
+    
+    for scene in script.get("scenes", []):
+        if scene.get("id") and scene.get("location_name"):
+            entity_map[scene["id"]] = scene["location_name"]
+
+    logger.info(f"[Export] Starting storyboard data export for episode {episode.title} (ID: {episode_id})")
+
+    zip_buffer = io.BytesIO()
+    
+    async with httpx.AsyncClient() as client:
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for i, board in enumerate(storyboards):
+                # 1. 构造文件夹名称
+                shot = board.get("shot_type", "")
+                action = board.get("action", "")
+                prompt_text = board.get("visual_prompt", "")
+                image_url = board.get("image_url", "")
+
+                # 替换 prompt 中的 {id} 为名称
+                if prompt_text:
+                    def replace_entity(match):
+                        key = match.group(1)
+                        return entity_map.get(key, match.group(0))
+                    prompt_text = re.sub(r'\{\{([^}]+)\}\}', replace_entity, prompt_text)
+
+                folder_name = f"{i+1:03d}_{sanitize_filename(shot)}_{sanitize_filename(action)}"
+                # 限制文件夹名长度，防止过长
+                folder_name = folder_name[:50].strip("_")
+                
+                # 2. 写入 prompt.txt
+                # 如果 prompt 为空，也创建一个空文件或写入提示
+                zip_file.writestr(f"{folder_name}/prompt.txt", prompt_text or "")
+
+                # 3. 处理图片
+                if image_url:
+                    # 获取扩展名
+                    clean_url = image_url.split('#')[0]
+                    basename = os.path.basename(clean_url)
+                    _, ext = os.path.splitext(basename)
+                    if not ext: ext = ".png"
+                    
+                    filename = f"image{ext}"
+                    zip_path = f"{folder_name}/{filename}"
+
+                    try:
+                        if clean_url.startswith("/assets/"):
+                            # 本地文件
+                            local_path_rel = clean_url.replace("/assets/", "", 1)
+                            if ".." not in local_path_rel:
+                                local_abs_path = os.path.join(settings.ASSETS_DIR, local_path_rel)
+                                if os.path.exists(local_abs_path):
+                                    zip_file.write(local_abs_path, zip_path)
+                                else:
+                                    logger.warning(f"[Export] Local file missing: {local_abs_path}")
+                        elif clean_url.startswith("http"):
+                            # 网络文件
+                            try:
+                                resp = await client.get(clean_url, follow_redirects=True, timeout=10.0)
+                                if resp.status_code == 200:
+                                    zip_file.writestr(zip_path, resp.content)
+                                else:
+                                    logger.warning(f"[Export] Download failed: {clean_url} ({resp.status_code})")
+                            except Exception as dl_err:
+                                logger.error(f"[Export] Download error: {dl_err}")
+                    except Exception as e:
+                        logger.error(f"[Export] Error processing image for storyboard {i}: {e}")
+
+    zip_buffer.seek(0)
+    file_content = zip_buffer.getvalue()
+    filename = f"{episode.title}_storyboard_data.zip"
+    encoded_filename = quote(filename)
+    
+    return Response(
+        content=file_content, 
+        media_type="application/zip", 
+        headers={
+            "Content-Disposition": f"attachment; filename*=utf-8''{encoded_filename}",
+            "Content-Length": str(len(file_content))
+        }
+    )
+
 def cleanup_file(path: str):
     if os.path.exists(path):
         os.remove(path)
