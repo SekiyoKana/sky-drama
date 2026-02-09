@@ -11,8 +11,9 @@ const statusMessage = ref('正在启动...');
 const retryCount = ref(0);
 
 const checkBackendHealth = async () => {
-  const healthUrl = 'http://127.0.0.1:11451/'; 
-  // Note: We use the direct URL to avoid /v1 prefix if configured in axios instance
+  // @ts-ignore
+  const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+  const healthUrl = isTauri ? 'http://127.0.0.1:11451/' : '/api/health'; 
   
   try {
     await axios.get(healthUrl, { timeout: 1000 });
@@ -44,7 +45,7 @@ onMounted(async () => {
     await appWindow.onCloseRequested(async (_event) => {
         console.log("Window closing, requesting backend shutdown...");
         try {
-            await axios.get('http://127.0.0.1:11451/shutdown', { timeout: 1000 });
+            await axios.get('/api/shutdown', { timeout: 1000 });
         } catch (e) {
             console.error("Shutdown request failed", e);
         }

@@ -11,15 +11,9 @@ class LogStreamClient {
 
     constructor() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        // Default to current host
+        // Default to current host with /ws prefix handled by proxy
         this.url = `${protocol}//${window.location.host}/ws/logs`
         this.fallbackUrl = ''
-
-        // Special handling for Vite dev server (usually on 5173) connecting to backend on 11451
-        if (window.location.host.includes('localhost') || window.location.host.includes('127.0.0.1')) {
-             this.url = 'ws://127.0.0.1:11451/ws/logs'
-             this.fallbackUrl = 'ws://localhost:11451/ws/logs'
-        }
     }
 
     connect(useFallback = false) {

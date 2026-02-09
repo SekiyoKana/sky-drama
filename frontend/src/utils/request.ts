@@ -5,9 +5,15 @@ import { useAuthStore } from '@/stores/auth' // 👈 引入 Auth Store
 import { debugLogger } from '@/utils/debugLogger'
 
 const service = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:11451/v1',
+  baseURL: import.meta.env.VITE_API_URL || '/v1',
   timeout: 5000000
 })
+
+// Check for Tauri environment and adjust base URL if necessary
+// @ts-ignore
+if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined) {
+    service.defaults.baseURL = 'http://127.0.0.1:11451/v1';
+}
 
 // 请求拦截器 (保持不变，用于发送 Token)
 service.interceptors.request.use(

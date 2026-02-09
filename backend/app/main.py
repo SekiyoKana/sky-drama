@@ -96,7 +96,14 @@ if os.path.exists(log_dir):
         logger.error(f"[Logs] [ERR] Mount failed: {e}")
 
 # --- CORS 配置 ---
-origins = ["*"]
+origins = [
+    "http://localhost",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+]
 
 app.add_middleware(
     CORSMiddleware,

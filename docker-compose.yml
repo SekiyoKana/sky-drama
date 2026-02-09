@@ -22,4 +22,7 @@ services:
       - "5173:80"
     depends_on:
       - backend
+    environment:
+      - BACKEND_HOST=backend
+      - BACKEND_PORT=11451
     restart: always
