@@ -3,7 +3,8 @@ import os
 import time
 import uuid
 import re
-import requests
+from urllib.parse import urlparse
+from app.utils.http_client import request as http_request
 import logging
 import tempfile
 import shutil
@@ -41,27 +42,41 @@ class AIEngine:
         
     def _resolve_local_path(self, path_or_url: str) -> Optional[str]:
         """
-        核心修复：将 URL 或 相对路径 统一转换为 可读取的本地绝对路径
+        将 URL 或相对路径统一转换为可读取的本地绝对路径
         """
         if not path_or_url:
             return None
             
-        # 1. 如果是网络 URL -> 下载到临时文件
+        # 1. 如果是网络 URL -> 尝试映射本地 assets，否则下载到临时文件
         if path_or_url.startswith("http"):
             try:
+                parsed = urlparse(path_or_url)
+                if parsed.hostname in {"127.0.0.1", "localhost", "backend"} and parsed.path.startswith("/assets/"):
+                    assets_dir = settings.ASSETS_DIR
+                    local_rel = parsed.path.replace("/assets/", "", 1)
+                    local_path = os.path.join(assets_dir, local_rel)
+                    if os.path.exists(local_path):
+                        return local_path
+
                 # logger.info(f"Downloading remote resource: {path_or_url}")
-                res = requests.get(path_or_url, stream=True, timeout=15)
-                if res.status_code == 200:
-                    ext = path_or_url.split('.')[-1].split('?')[0]
-                    if len(ext) > 4 or "/" in ext: ext = "png"
-                    
-                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
-                    with open(tmp.name, 'wb') as f:
-                        shutil.copyfileobj(res.raw, f)
-                    return tmp.name
-                else:
-                    logger.error(f"Failed to download image {path_or_url}: Status {res.status_code}")
-                    return None
+                res = http_request("GET", path_or_url, stream=True, timeout=(10, 60))
+                try:
+                    if res.status_code == 200:
+                        ext = path_or_url.split('.')[-1].split('?')[0]
+                        if len(ext) > 4 or "/" in ext: ext = "png"
+                        
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
+                        with open(tmp.name, 'wb') as f:
+                            shutil.copyfileobj(res.raw, f)
+                        return tmp.name
+                    else:
+                        logger.error(f"Failed to download image {path_or_url}: Status {res.status_code}")
+                        return None
+                finally:
+                    try:
+                        res.close()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.error(f"Error downloading image {path_or_url}: {e}")
                 return None
@@ -149,8 +164,6 @@ class AIEngine:
                 base_url_str = str(base_url).rstrip('/')
                 api_url = f"{base_url_str}{endpoint}"
                 
-                # [关键修复] 解析 input_reference URL 为本地路径
-                # 之前这里直接用了 URL，导致 os.path.join 报错
                 raw_ref = data.get("input_reference")
                 local_ref = self._resolve_local_path(raw_ref)
                 
@@ -212,7 +225,8 @@ class AIEngine:
                     }
 
                     yield self._format_sse("status", f"Submitting video task to {target_model}...")
-                    response = requests.post(
+                    response = http_request(
+                        "POST",
                         api_url,
                         data=form_data,
                         files=files_payload,
@@ -239,7 +253,7 @@ class AIEngine:
                     for i in range(max_retries):
                         time.sleep(5)
                         try:
-                            poll_res = requests.get(poll_url, headers=headers, timeout=30)
+                            poll_res = http_request("GET", poll_url, headers=headers, timeout=30)
                             if poll_res.status_code != 200:
                                 continue
                                 
@@ -345,8 +359,8 @@ class AIEngine:
                         payload["prompt"] = f"使用第一张图片的图片风格，以第二张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}" if style_image_base64 else f"使用这张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。{prompt}"
     
                 yield self._format_sse("backend_log", "Submitting image generation request...")
-                response = requests.post(
-                    api_url, json=payload, headers=headers, timeout=3000
+                response = http_request(
+                    "POST", api_url, json=payload, headers=headers, timeout=3000
                 )
                 yield self._format_sse("backend_log", f"Response Status: {response.status_code}")
     
@@ -374,7 +388,7 @@ class AIEngine:
                     return
 
             yield self._format_sse("status", "Downloading asset...")
-            img_res = requests.get(image_url, timeout=600)
+            img_res = http_request("GET", image_url, timeout=600)
             if img_res.status_code != 200:
                 yield self._format_sse("error", "Failed to download asset")
                 return
@@ -402,8 +416,8 @@ class AIEngine:
             self.db.commit()
             self.db.refresh(new_asset)
             
-            # 返回完整的 HTTP URL 给前端，确保不出现 404
-            full_display_url = f"http://127.0.0.1:11451{asset_url}"
+            # 返回相对路径给前端，由前端根据运行环境解析
+            full_display_url = asset_url
 
             yield self._format_sse("progress", 100)
             yield self._format_sse("status", "Completed")
@@ -444,6 +458,23 @@ class AIEngine:
             for k, v in kwargs.items():
                 if k not in skill_args and k not in ["title", "description"]:
                     skill_args[k] = v
+
+            if tool_name == "short-video-screenwriter":
+                skill_args["existing_data"] = self._collect_project_assets()
+
+            # Inject project-level existing assets for screenwriter
+            if tool_name == "short-video-screenwriter":
+                existing_data = self._collect_project_assets()
+                if "existing_data" in skill_args and isinstance(skill_args["existing_data"], dict):
+                    # Merge provided data with project assets (project assets win on id/name)
+                    provided = skill_args["existing_data"]
+                    merged = {
+                        "characters": (provided.get("characters") or []) + (existing_data.get("characters") or []),
+                        "scenes": (provided.get("scenes") or []) + (existing_data.get("scenes") or []),
+                    }
+                    skill_args["existing_data"] = merged
+                else:
+                    skill_args["existing_data"] = existing_data
 
             logger.info(f"[AI Director] Executing skill: {tool_name}")
             logger.info(f"[AI Director] Arguments keys: {list(skill_args.keys())}")
@@ -566,6 +597,158 @@ class AIEngine:
                     )
         return copy_data
 
+    def _normalize_name(self, value: Optional[str]) -> str:
+        if not value:
+            return ""
+        return re.sub(r"\s+", "", str(value)).strip().lower()
+
+    def _collect_project_assets(self):
+        assets = {"characters": [], "scenes": []}
+        if not self.episode or not getattr(self.episode, "project", None):
+            return assets
+
+        seen_char_ids = set()
+        seen_scene_ids = set()
+        seen_char_names = set()
+        seen_scene_names = set()
+
+        for ep in self.episode.project.episodes:
+            if not ep.ai_config or "generated_script" not in ep.ai_config:
+                continue
+            script = ep.ai_config.get("generated_script", {})
+
+            for char in script.get("characters", []) or []:
+                if not isinstance(char, dict):
+                    continue
+                char_id = str(char.get("id") or "").strip()
+                char_name = self._normalize_name(char.get("name"))
+                if char_id and char_id in seen_char_ids:
+                    continue
+                if not char_id and char_name and char_name in seen_char_names:
+                    continue
+                assets["characters"].append(char)
+                if char_id:
+                    seen_char_ids.add(char_id)
+                if char_name:
+                    seen_char_names.add(char_name)
+
+            for scene in script.get("scenes", []) or []:
+                if not isinstance(scene, dict):
+                    continue
+                scene_id = str(scene.get("id") or "").strip()
+                scene_name = self._normalize_name(scene.get("location_name"))
+                if scene_id and scene_id in seen_scene_ids:
+                    continue
+                if not scene_id and scene_name and scene_name in seen_scene_names:
+                    continue
+                assets["scenes"].append(scene)
+                if scene_id:
+                    seen_scene_ids.add(scene_id)
+                if scene_name:
+                    seen_scene_names.add(scene_name)
+
+        return assets
+
+    def _merge_with_existing(self, items, existing_items, name_key: str):
+        if not isinstance(items, list):
+            return items
+
+        existing_by_id = {}
+        existing_by_name = {}
+        for item in existing_items or []:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            if item_id:
+                existing_by_id[str(item_id)] = item
+            name_val = item.get(name_key) or item.get("name")
+            name_norm = self._normalize_name(name_val)
+            if name_norm:
+                existing_by_name[name_norm] = item
+
+        merged = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            match = None
+            item_id = item.get("id")
+            if item_id and str(item_id) in existing_by_id:
+                match = existing_by_id[str(item_id)]
+            else:
+                name_val = item.get(name_key) or item.get("name")
+                name_norm = self._normalize_name(name_val)
+                if name_norm and name_norm in existing_by_name:
+                    match = existing_by_name[name_norm]
+
+            if match:
+                # 复用已存在对象，绝不修改其字段
+                merged.append(match)
+            else:
+                merged.append(item)
+
+        # Deduplicate merged list
+        final_items = []
+        seen_keys = set()
+        for item in merged:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            name_val = item.get(name_key) or item.get("name")
+            name_norm = self._normalize_name(name_val)
+            key = str(item_id) if item_id else name_norm
+            if key and key in seen_keys:
+                continue
+            if key:
+                seen_keys.add(key)
+            final_items.append(item)
+
+        return final_items
+
+    def _merge_preserve_existing(self, existing_items, new_items, name_key: str):
+        """
+        Keep all existing items, append only truly new items.
+        Matching by id first, then normalized name.
+        """
+        if not isinstance(existing_items, list):
+            existing_items = []
+        if not isinstance(new_items, list):
+            return existing_items
+
+        merged = list(existing_items)
+        existing_ids = set()
+        existing_names = set()
+
+        for item in existing_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            if item_id:
+                existing_ids.add(str(item_id))
+            name_val = item.get(name_key) or item.get("name")
+            name_norm = self._normalize_name(name_val)
+            if name_norm:
+                existing_names.add(name_norm)
+
+        for item in new_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            name_val = item.get(name_key) or item.get("name")
+            name_norm = self._normalize_name(name_val)
+
+            if item_id and str(item_id) in existing_ids:
+                continue
+            if (not item_id) and name_norm and name_norm in existing_names:
+                continue
+
+            merged.append(item)
+            if item_id:
+                existing_ids.add(str(item_id))
+            if name_norm:
+                existing_names.add(name_norm)
+
+        return merged
+
     def _submit(self, tool_name: str, final_output_accumulator: str):
         try:
             if not final_output_accumulator:
@@ -613,6 +796,32 @@ class AIEngine:
                 
                 try:
                     parsed_data = json.loads(json_match)
+                    # Merge characters/scenes with existing project assets
+                    existing_assets = self._collect_project_assets()
+                    existing_script = {}
+                    if self.episode and self.episode.ai_config:
+                        existing_script = self.episode.ai_config.get("generated_script", {}) or {}
+                    if "characters" in parsed_data:
+                        merged_chars = self._merge_with_existing(
+                            parsed_data["characters"], existing_assets.get("characters", []), "name"
+                        )
+                        merged_chars = self._merge_preserve_existing(
+                            existing_script.get("characters", []), merged_chars, "name"
+                        )
+                        parsed_data["characters"] = merged_chars
+                    if "scenes" in parsed_data:
+                        merged_scenes = self._merge_with_existing(
+                            parsed_data["scenes"], existing_assets.get("scenes", []), "location_name"
+                        )
+                        merged_scenes = self._merge_preserve_existing(
+                            existing_script.get("scenes", []), merged_scenes, "location_name"
+                        )
+                        parsed_data["scenes"] = merged_scenes
+                    if "storyboard" in parsed_data:
+                        merged_storyboard = self._merge_preserve_existing(
+                            existing_script.get("storyboard", []), parsed_data["storyboard"], "action"
+                        )
+                        parsed_data["storyboard"] = merged_storyboard
                     if "characters" in parsed_data:
                         parsed_data["characters"] = self._inject_ids(parsed_data["characters"], "char")
                     if "scenes" in parsed_data:

@@ -84,7 +84,6 @@ const transformUrls = (data: any): any => {
   return data
 }
 
-// 🟢 响应拦截器 (核心修改)
 service.interceptors.response.use(
   (response) => {
     if (response.config.responseType === 'blob' || response.data instanceof Blob) {

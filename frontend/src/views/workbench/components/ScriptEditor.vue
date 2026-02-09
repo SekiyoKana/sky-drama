@@ -8,6 +8,7 @@ import NeuButton from '@/components/base/NeuButton.vue'
 import { useMessage } from '@/utils/useMessage'
 import { useConfirm } from '@/utils/useConfirm'
 import { debugLogger } from '@/utils/debugLogger'
+import { resolveImageUrl } from '@/utils/assets'
 import BookPreview from './BookPreview.vue'
 import CharacterCreateModal from './CharacterCreateModal.vue'
 import VideoPreviewModal from './VideoPreviewModal.vue'
@@ -324,12 +325,13 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
                       }
 
                       if (url) {
+                          const normalizedUrl = resolveImageUrl(url)
                           if (type === 'video') {
-                              item.video_url = url
-                              handleUpdateItem(item.id, { video_url: url })
+                              item.video_url = normalizedUrl
+                              handleUpdateItem(item.id, { video_url: normalizedUrl })
                           } else {
-                              item.image_url = url
-                              handleUpdateItem(item.id, { image_url: url })
+                              item.image_url = normalizedUrl
+                              handleUpdateItem(item.id, { image_url: normalizedUrl })
                           }
                           
                           let mediaName = `${type}-${index}`
@@ -339,7 +341,7 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
 
                           emit('generate-media', {
                               type: type,
-                              src: url,
+                              src: normalizedUrl,
                               name: mediaName,
                               duration: 5,
                               refData: item

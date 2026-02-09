@@ -8,7 +8,6 @@ ENV APP_WORK_DIR=/app/data
 
 WORKDIR /app
 
-# 2. [关键修复] 更换 Debian 镜像源 (解决 apt update 超时/失败问题)
 # 这里使用阿里云镜像源，替换原本的 deb.debian.org
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
 

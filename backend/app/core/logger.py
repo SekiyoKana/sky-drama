@@ -20,7 +20,6 @@ def get_log_dir():
     # 2. Second Priority: Frozen (PyInstaller) paths fallback
     elif getattr(sys, 'frozen', False):
         if platform.system() == 'Windows':
-            # [核心修复] Windows 下强制使用安装目录 (Exe 同级)，不再去 AppData
             exe_dir = os.path.dirname(sys.executable)
             base = os.path.join(exe_dir, 'logs')
         elif platform.system() == 'Darwin':
@@ -35,8 +34,6 @@ def get_log_dir():
         # 开发模式：使用当前目录下的 logs
         base = os.path.abspath("logs")
     
-    # 4. CRITICAL FIX: Unified creation logic
-    # 无论上面哪种情况选定了 base，都要执行下面的创建逻辑
     if not os.path.exists(base):
         try:
             os.makedirs(base, exist_ok=True)

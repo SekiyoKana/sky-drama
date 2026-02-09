@@ -4,7 +4,7 @@ import re
 import uuid
 import json
 import base64
-import requests
+from app.utils.http_client import request as http_request
 from typing import Any, Dict, List
 from .base import Base
 
@@ -75,7 +75,14 @@ class Yi(Base):
         # 5. 执行流式请求并阻塞等待结果 (同步转伪异步)
         # 因为 API 是流式的，无法直接获得 ID 后去轮询，必须在这里读完流
         try:
-            response = requests.post(api_url, headers=self._headers, json=payload, stream=True, timeout=600) # timeout 6000s from source
+            response = http_request(
+                "POST",
+                api_url,
+                headers=self._headers,
+                json=payload,
+                stream=True,
+                timeout=600,
+            )  # timeout 6000s from source
             response.raise_for_status()
             
             final_video_url = None

@@ -42,7 +42,6 @@ const episode = ref<any>(null)
 const loading = ref(true)
 const showModelConfig = ref(false)
 
-// --- AI & Script State ---
 const isAiGenerating = ref(false)
 const scriptData = ref<any>(null)
 const scriptReadyHighlight = ref(false)
@@ -193,8 +192,7 @@ const initData = async () => {
     if (!currentEp) throw new Error('Episode not found')
     episode.value = currentEp
 
-    // Load AI Config Data
-    if (currentEp.ai_config) {
+      if (currentEp.ai_config) {
       if (currentEp.ai_config.generated_script) {
         scriptData.value = currentEp.ai_config.generated_script
       }
@@ -855,7 +853,6 @@ onUnmounted(() => {
 
       <div class="flex gap-4 items-center">
 
-        <!-- AI Director Toggle -->
         <div class="relative group/ai" id="tour-ai-director">
           <button @click="showAiDirector = !showAiDirector"
             class="flex items-center gap-2 px-3 py-2.5 rounded-xl transition-all font-bold text-xs uppercase tracking-wider"
@@ -943,8 +940,7 @@ onUnmounted(() => {
             @handle-down="onHandleMouseDown(index)" @update-item="handleUpdateTimelineItem"
             @time-update="handleTimeUpdate" @duration-update="handleDurationUpdate"
             @play-state-change="handlePlayStateChange" />
-          <!-- AI Loading Indicator -->
-          <transition name="fade">
+        <transition name="fade">
             <div v-if="isAiGenerating"
               class="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#E0E5EC]/90 backdrop-blur-md text-blue-600 px-5 py-2.5 rounded-full shadow-[5px_5px_10px_#b8b9be,-5px_-5px_10px_#ffffff] flex items-center gap-3 border border-white/20 cursor-pointer hover:scale-105 transition-all select-none"
               @click="showConsole = true">

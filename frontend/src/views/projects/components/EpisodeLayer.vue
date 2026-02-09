@@ -142,53 +142,8 @@
     if (editingId.value || deleteConfirmId.value) return 
     if (!props.project) return
   
-    // 🆕 Check and Sync logic
-    // Merge project-level assets into episode if needed
-    // This is done on the backend if we update the script, but frontend needs to ensure it has latest.
-    // Actually, the requirement says: "when entering an episode, check all available characters of the project and sync to the episode"
-    // Since we are about to navigate to the workbench, we can rely on the backend API or do a quick check here.
-    // However, the cleanest way is to call an update API if we detect missing assets, OR simply trust the user will see them available to add.
-    // BUT the requirement says "sync to the episode... only increase, not decrease". 
-    // This suggests we should auto-populate the episode's ai_config with project assets if they are missing.
-    
-    // Let's do a lightweight sync via API call before navigation?
-    // Or better, let the Workbench handle it on mount?
-    // Requirement: "when I enter an episode..."
-    // Let's do it here.
-    
     if (props.project.assets) {
-        // We have project assets. We need to check the episode's config.
-        // Since we don't have the full episode config loaded here (only list info), 
-        // we might need to fetch it or blindly send a sync request.
-        // A blind sync request is safer and cleaner.
-        // Let's assume we have an API for this or we construct an update.
-        // Since we don't want to overcomplicate, let's just navigate.
-        // The workbench should handle loading the latest state.
-        // Wait, the prompt says "sync... when entering".
-        // Let's implement a specific sync action in the `aiApi` or simply pass the assets to the workbench?
-        // No, persistent storage is needed.
-        
-        // Let's try to update the episode script items with missing project assets.
-        // But we don't want to overwrite.
-        // Maybe the best place IS the workbench onMounted.
-        // Let's stick to the visual changes here and let the workbench handle the logic?
-        // "in ProjectListView... check... and sync"
-        // Okay, let's do it in `enterWorkbench`.
-        
         try {
-             // We need to fetch the specific episode detail to know what it has?
-             // Or we just send a "sync_assets" command?
-             // We don't have a backend command for that yet.
-             // We can do it purely frontend:
-             // 1. Fetch episode detail
-             // 2. Merge assets
-             // 3. Update episode if changed
-             
-             // However, `episodeApi.list` might not return full `ai_config`.
-             // Let's check `backend/app/api/v1/endpoints/projects.py`... `EpisodeOut` likely includes it?
-             // `EpisodeOut` in `schemas/project.py` usually has it.
-             // If `ep` in `episodes` has `ai_config`, we can use it.
-             
              const targetEp = episodes.value.find(e => e.id === epId)
              if (targetEp && props.project.assets) {
                  const currentConfig = targetEp.ai_config || {}
@@ -220,7 +175,6 @@
                      currentConfig.generated_script.characters = newChars
                      currentConfig.generated_script.scenes = newScenes
                      
-                     // Call update API
                      await episodeApi.update(props.project.id, epId, { ai_config: currentConfig } as any)
                  }
              }

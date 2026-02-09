@@ -3,13 +3,13 @@ import os
 import io
 import signal
 import threading
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
-# 1. 设置标准输出编码 (保留，防止中文乱码)
 try:
     if hasattr(sys.stdout, 'buffer'):
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -18,13 +18,18 @@ try:
 except Exception:
     pass
 
-# ---------------------------------------------------------
-# ❌ 删除：所有 [Init] 代码 (设置 CWD, Database Path, SQLite)
-# 这些工作现在全权由 entry.py 负责，main.py 不应再插手。
-# ---------------------------------------------------------
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)
+    app_work_dir = os.environ.get("APP_WORK_DIR")
+    if app_work_dir:
+        load_dotenv(Path(app_work_dir) / ".env", override=False)
+except Exception:
+    pass
 
-# 2. 正常导入业务模块
-# 此时 os.environ["DATABASE_URL"] 已经被 entry.py 设置为正确的可写路径了
+from app.utils.http_client import init_network_env
+init_network_env()
+
 from app.core.config import settings
 from app.db.session import engine
 from app.db.base import Base
@@ -39,13 +44,11 @@ logger = setup_logging()
 async def lifespan(app: FastAPI):
     logger.info("[Life] Checking database schema...")
     try:
-        # 使用 entry.py 注入的数据库路径创建表
         Base.metadata.create_all(bind=engine)
         logger.info("[Life] Database schema check completed.")
     except Exception as e:
         logger.error(f"[Life] [ERR] Database schema creation failed: {e}")
     
-    # 清理孤儿资源
     try:
         from app.utils.asset_cleaner import clean_orphan_assets
         clean_orphan_assets()
@@ -57,12 +60,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
-
-# --- Assets 挂载 ---
-# 使用 settings 读取环境变量 (entry.py 已经设置了 ASSETS_DIR)
 assets_dir = settings.ASSETS_DIR 
 
-# 增加容错：如果目录不存在，尝试创建（在 Application Support 下是允许创建的）
 if not os.path.exists(assets_dir):
     try:
         os.makedirs(assets_dir, exist_ok=True)
@@ -79,7 +78,6 @@ if os.path.exists(assets_dir):
 else:
     logger.warning(f"[Assets] Directory missing: {assets_dir}. Static files disabled.")
 
-# --- Logs 挂载 ---
 log_dir = get_log_dir()
 if not os.path.exists(log_dir):
     try:
@@ -95,7 +93,6 @@ if os.path.exists(log_dir):
     except Exception as e:
         logger.error(f"[Logs] [ERR] Mount failed: {e}")
 
-# --- CORS 配置 ---
 origins = [
     "http://localhost",
     "http://localhost:5173",
@@ -113,7 +110,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 路由注册 ---
 app.include_router(auth.router, prefix="/v1/login", tags=["auth_legacy"])
 app.include_router(projects.router, prefix="/v1/projects", tags=["projects_legacy"])
 app.include_router(ai.router, prefix="/v1/ai", tags=["ai_legacy"])
@@ -124,17 +120,13 @@ app.include_router(style.router, prefix="/v1/styles", tags=["styles"])
 app.include_router(users.router, prefix="/v1/users", tags=["users"])
 app.include_router(logs.router, prefix="/v1/logs", tags=["logs"])
 
-# --- 中间件 ---
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    # 过滤掉日志轮询，防止刷屏
     if "/logs/latest" in request.url.path or "/ws/logs" in request.url.path:
         return await call_next(request)
-    # logger.info(f"-> {request.method} {request.url.path}") 
     response = await call_next(request)
     return response
 
-# --- WebSocket ---
 @app.websocket("/ws/logs")
 async def websocket_logs(websocket: WebSocket):
     await manager.connect(websocket)
@@ -148,7 +140,6 @@ async def websocket_logs(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
 
-# --- 优雅退出 ---
 @app.get("/shutdown")
 def shutdown_server():
     logger.info("Shutdown request received. Exiting...")
@@ -161,7 +152,6 @@ def shutdown_server():
     threading.Timer(0.5, kill).start()
     return {"status": "shutting down"}
 
-# --- 全局异常 ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     error_msg = f"[Internal Server Error] {str(exc)}"

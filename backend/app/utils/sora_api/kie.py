@@ -1,5 +1,5 @@
 import json
-import requests
+from app.utils.http_client import request as http_request
 from typing import Any, Dict, List
 from .base import Base
 from app.utils.image_utils import to_base64
@@ -66,7 +66,7 @@ class Kie(Base):
 
         # 4. 发送创建请求
         try:
-            response = requests.post(api_url, headers=self._headers, json=payload, timeout=30)
+            response = http_request("POST", api_url, headers=self._headers, json=payload, timeout=30)
             response.raise_for_status()
             res_json = response.json()
             
@@ -89,7 +89,13 @@ class Kie(Base):
         api_url = f"{self._base_url}/jobs/recordInfo"
         
         try:
-            response = requests.get(api_url, headers=self._headers, params={"taskId": task_id}, timeout=30)
+            response = http_request(
+                "GET",
+                api_url,
+                headers=self._headers,
+                params={"taskId": task_id},
+                timeout=30,
+            )
             response.raise_for_status()
             res_json = response.json()
             

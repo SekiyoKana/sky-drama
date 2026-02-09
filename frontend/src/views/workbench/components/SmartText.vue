@@ -40,8 +40,6 @@ const parts = computed(() => {
       // Extract content inside {{ }}
       const fullId = part.slice(2, -2)
       // Find by matching ID directly (assuming ID in data includes prefix)
-      // OR if data ID is raw number, we might need to handle that. 
-      // But user said IDs have prefixes. We try exact match first.
       let char = props.characters.find(c => c.id == fullId)
       
       return {

@@ -97,7 +97,6 @@ def main(
         template_file = "storyboard_prompt.md"
 
     # Auto-detection fallback removed as per instruction to rely on loading rules?
-    # User said: "加载prompt的规则为，character自动加载... scene加载... storyboard自动加载..."
     # implying strictly following category.
 
     template_path = os.path.join(knowledge_path, template_file)

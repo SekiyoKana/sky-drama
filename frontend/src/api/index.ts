@@ -27,7 +27,6 @@ export const authApi = {
   }
 }
 
-// --- AI ---
 export const aiApi = {
     testConnection: (apiKeyId: number) => request.post('/ai/test-connection', { api_key_id: apiKeyId }),
     updateScriptItem: (data: { episode_id: number, item_id: string, updates: any }) => request.post('/ai/script/update_item', data),

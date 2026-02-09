@@ -30,7 +30,6 @@
     password: ''
   })
   
-  // 1. 🟢 页面加载时：检查是否有保存的邮箱
   onMounted(async () => {
     const savedEmail = localStorage.getItem('login_email')
     if (savedEmail) {
@@ -50,7 +49,6 @@
   
     try {
       if (isLogin.value) {
-        // 2. 🟢 登录成功前：处理“记住我”逻辑
         if (rememberMe.value) {
           localStorage.setItem('login_email', form.value.email)
         } else {

@@ -5,62 +5,88 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # Gzip compression
+    client_max_body_size 100M;
+
+    # Gzip 压缩 (保持原样，但建议加上 gzip_proxied)
     gzip on;
     gzip_min_length 1000;
+    gzip_proxied any;
     gzip_types text/plain text/css application/json application/javascript application/x-javascript text/xml application/xml application/xml+rss text/javascript;
 
+    # 前端静态文件
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Proxy API requests
     location /v1 {
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
+        
+        # 基础 Header
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding on;
     }
 
+    # 静态资源代理 (Assets)
     location /assets {
-        # Try to serve file from local frontend build (static files)
+        # 尝试从本地前端构建目录找 (静态文件)
         try_files $uri @backend_assets;
     }
 
+    # 后端资源回退处理
     location @backend_assets {
-        # If not found locally, proxy to backend
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
         proxy_set_header Host $host;
+        
+        # 下载大文件(生成的视频)可能耗时，也加上超时设置
+        proxy_read_timeout 3600s; 
     }
 
-    # Proxy Logs (Static)
+    # 日志代理
     location /logs {
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
         proxy_set_header Host $host;
+        # 查看日志可能需要长连接
+        proxy_read_timeout 3600s;
     }
 
-    # Proxy WebSocket
+    # WebSocket 代理
     location /ws {
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
+        
+        # WebSocket 必须的 Upgrade 头
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "Upgrade";
         proxy_set_header Host $host;
+        
+        # WebSocket 长连接防断开
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
-    # Health check alias
+    # 健康检查
     location = /api/health {
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT}/;
         proxy_set_header Host $host;
     }
     
-    # Shutdown alias
+    # 关闭服务
     location = /api/shutdown {
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT}/shutdown;
         proxy_set_header Host $host;
     }
 
-    # Error pages
+    # 错误页面
     error_page 500 502 503 504 /50x.html;
     location = /50x.html {
         root /usr/share/nginx/html;

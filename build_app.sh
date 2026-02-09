@@ -63,14 +63,11 @@ else
     source .venv/bin/activate
 fi
 
-# 核心：自动补全缺失的动态库
 PYINSTALLER_ARGS="--paths . --add-data app/skills:app/skills --add-data assets:assets --hidden-import sqlite3 --hidden-import passlib.handlers.bcrypt --hidden-import charset_normalizer --hidden-import _posixshmem --hidden-import multiprocessing --clean --noconfirm"
 
-# 修复 SQLite
 SQLITE_LIB=$(python -c "import _sqlite3; print(_sqlite3.__file__)")
 if [ -n "$SQLITE_LIB" ]; then PYINSTALLER_ARGS="$PYINSTALLER_ARGS --add-binary $SQLITE_LIB:."; fi
 
-# 修复 libxcb
 LIBXCB_PATH=""
 POSSIBLE_PATHS=("/opt/homebrew/lib/libxcb.1.dylib" "/usr/local/lib/libxcb.1.dylib" "/opt/X11/lib/libxcb.1.dylib")
 for path in "${POSSIBLE_PATHS[@]}"; do
@@ -106,7 +103,6 @@ chmod +x "$TARGET"
 log_info "Building Tauri App..."
 if [ -f "pnpm-lock.yaml" ]; then CMD="pnpm"; elif [ -f "yarn.lock" ]; then CMD="yarn"; else CMD="npm run"; fi
 
-# [核心修改] macOS 上只打 .app 包，跳过 .dmg 以避免脚本错误
 if [ "$OS_NAME" == "Darwin" ]; then
     log_info "Targeting macOS .app bundle only (skipping DMG to avoid script errors)..."
     $CMD tauri build --bundles app

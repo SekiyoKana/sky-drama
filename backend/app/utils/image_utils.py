@@ -5,7 +5,7 @@ import base64
 import io
 import os
 import uuid
-import requests
+from app.utils.http_client import request as http_request
 from PIL import Image
 from typing import List, Optional
 from app.core.config import settings
@@ -30,7 +30,7 @@ def load_image_from_url_or_path(url: str) -> Image.Image:
         return Image.open(io.BytesIO(img_data))
     elif url.startswith('http://') or url.startswith('https://'):
         # Remote URL
-        response = requests.get(url, timeout=30)
+        response = http_request("GET", url, timeout=30)
         return Image.open(io.BytesIO(response.content))
     elif url.startswith('/assets/'):
         # Local asset path - convert to filesystem path

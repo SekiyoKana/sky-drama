@@ -14,6 +14,17 @@ export const getBaseUrl = (): string => {
 
 export const resolveImageUrl = (path: string | undefined | null): string => {
   if (!path) return ''
+
+  // Tauri: always serve assets from local backend
+  // @ts-ignore
+  const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined
+  if (isTauri) {
+    if (path.startsWith('http') || path.startsWith('https') || path.startsWith('data:') || path.startsWith('blob:')) {
+      return path
+    }
+    const cleanPath = path.startsWith('/') ? path : `/${path}`
+    return `http://127.0.0.1:11451${cleanPath}`
+  }
   
   // 1. Check for legacy absolute localhost URLs (from migrated database)
   // If the URL contains localhost/127.0.0.1 but we are NOT on localhost,

@@ -137,7 +137,6 @@ def setup_environment():
         # 将临时目录的 assets 同步到持久化目录，并将 ASSETS_DIR 指向持久化目录
         sync_internal_assets(bundle_dir, app_data_dir)
         
-        # 关键：指向外部 data/assets，确保写入的文件能保存
         os.environ["ASSETS_DIR"] = str(app_data_dir / "assets")
         
         if sys.platform == "darwin":
@@ -166,7 +165,6 @@ if __name__ == "__main__":
         kill_port(11451)
         setup_environment()
         
-        # 打印一下关键路径，方便调试
         logger.info(f"💾 DATABASE: {os.environ.get('DATABASE_URL')}")
         logger.info(f"📂 ASSETS: {os.environ.get('ASSETS_DIR')}")
 

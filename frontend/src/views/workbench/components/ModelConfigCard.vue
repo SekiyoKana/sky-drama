@@ -121,7 +121,6 @@
     }
   }
 
-  // 1. 核心修复：深度监听 initialConfig
   watch(() => props.initialConfig, (newVal) => {
     if (newVal) {
       config.value = {
