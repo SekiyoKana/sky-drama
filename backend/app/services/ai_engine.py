@@ -101,6 +101,7 @@ class AIEngine:
             
         return path_or_url
 
+
     def _init_client_and_model(self, type="text"):
         config = self.config.get(type, {})
 
@@ -311,28 +312,41 @@ class AIEngine:
     
                 if data and "category" in data:
                     category = data["category"]
-                    file_path = ""
-                    
+                    template_base64 = None
                     assets_dir = settings.ASSETS_DIR
-                    
-                    match category:
-                        case "character":
-                            file_path = os.path.join(assets_dir, "static", "character_template.png")
-                        case "scene":
-                            file_path = os.path.join(assets_dir, "static", "scene_template.png")
-                        case "storyboard":
-                            file_path = os.path.join(assets_dir, "static", "storyboard_9_template.png")
-
-                    image_base64 = to_base64(file_path)
+                    if category == "character":
+                        template_base64 = to_base64(os.path.join(assets_dir, "static", "character_template.png"))
+                    elif category == "scene":
+                        template_base64 = to_base64(os.path.join(assets_dir, "static", "scene_template.png"))
                     
                     style_local_path = self._resolve_local_path(style.image_url) if style and style.image_url else None
                     style_image_base64 = to_base64(style_local_path) if style_local_path else None
 
-                    if not image_base64:
-                        yield self._format_sse("error", f"Failed to load template image at {file_path}")
-                        return
+                    reference_image_base64 = None
+                    if data and data.get("reference_image"):
+                        ref_local_path = self._resolve_local_path(data.get("reference_image"))
+                        if ref_local_path:
+                            reference_image_base64 = to_base64(ref_local_path)
 
                     if category == "storyboard":
+                        grid_count = None
+                        if data:
+                            for key in ("storyboard_grid", "grid", "frame_count"):
+                                if data.get(key) is not None:
+                                    try:
+                                        grid_count = int(data.get(key))
+                                    except Exception:
+                                        grid_count = None
+                                    break
+                            if grid_count is None:
+                                mode = data.get("generation_mode")
+                                if mode == "single":
+                                    grid_count = 9
+                                elif mode == "keyframes":
+                                    grid_count = 9
+                        if grid_count not in {6, 9}:
+                            grid_count = 9
+
                         images = []
                         if data and data.get("context_characters"):
                             raw_char_imgs = [char.get("image_url") for char in data.get("context_characters")]
@@ -352,11 +366,25 @@ class AIEngine:
                         
                         combine_path, _ = combine_image(images, direction='vertical', return_type='path')
                         temp_image_base64 = to_base64(combine_path)
-                        payload["image"] = [style_image_base64, temp_image_base64, image_base64] if style_image_base64 else [temp_image_base64, image_base64]
-                        payload["prompt"] = f"参考第一张图片的图片作画风格、第二张图片的人设以及场景，以第三张图片作为模板生成目标图片，并始终保持模板的第一格为黑幕： {prompt}" if style_image_base64 else f"参考第一张图片的人设以及场景，使用第二张图片作为模板生成目标图片，并始终保持模板的第一格为黑幕: {prompt}"
+                        if style_image_base64:
+                            payload["image"] = [style_image_base64, temp_image_base64]
+                            payload["prompt"] = f"参考第一张图片的画风，参考第二张图片的人设与场景，生成一张16:9的{grid_count}宫格分镜图：{prompt}"
+                        else:
+                            payload["image"] = [temp_image_base64]
+                            payload["prompt"] = f"参考第一张图片的人设与场景，生成一张16:9的{grid_count}宫格分镜图：{prompt}"
                     else:
-                        payload["image"] = [style_image_base64, image_base64] if style_image_base64 else [image_base64]
-                        payload["prompt"] = f"使用第一张图片的图片风格，以第二张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}" if style_image_base64 else f"使用这张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。{prompt}"
+                        if not template_base64:
+                            yield self._format_sse("error", f"Failed to load template image for category: {category}")
+                            return
+                        if style_image_base64 and reference_image_base64:
+                            payload["image"] = [style_image_base64, reference_image_base64, template_base64]
+                            payload["prompt"] = f"参考第一张图片的图片风格，第二张图片的参考图，以第三张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}"
+                        elif reference_image_base64:
+                            payload["image"] = [reference_image_base64, template_base64]
+                            payload["prompt"] = f"参考第一张图片的参考图，使用第二张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}"
+                        else:
+                            payload["image"] = [style_image_base64, template_base64] if style_image_base64 else [template_base64]
+                            payload["prompt"] = f"使用第一张图片的图片风格，以第二张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}" if style_image_base64 else f"使用这张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。{prompt}"
     
                 yield self._format_sse("backend_log", "Submitting image generation request...")
                 response = http_request(
@@ -475,6 +503,7 @@ class AIEngine:
                     skill_args["existing_data"] = merged
                 else:
                     skill_args["existing_data"] = existing_data
+
 
             logger.info(f"[AI Director] Executing skill: {tool_name}")
             logger.info(f"[AI Director] Arguments keys: {list(skill_args.keys())}")
@@ -738,7 +767,7 @@ class AIEngine:
 
             if item_id and str(item_id) in existing_ids:
                 continue
-            if (not item_id) and name_norm and name_norm in existing_names:
+            if name_norm and name_norm in existing_names:
                 continue
 
             merged.append(item)

@@ -17,6 +17,7 @@ dist
 dist-ssr
 *.local
 backend/build
+backend/assets/*
 pkg/*
 !pkg/README.md
 *.spec

@@ -97,7 +97,6 @@ import helloImg from '@/assets/hello.png'
       }
   }
   
-  // 2. 关闭项目 (移除 URL 参数)
   const handleBack = () => {
     isFlipped.value = false
     isFlipComplete.value = false
@@ -105,7 +104,6 @@ import helloImg from '@/assets/hello.png'
     setTimeout(() => { currentProject.value = null }, 800)
   }
   
-  // 3. 监听路由初始化 (F5 刷新保持状态)
   const initFromUrl = async () => {
     const projectId = route.query.id
     if (projectId) {

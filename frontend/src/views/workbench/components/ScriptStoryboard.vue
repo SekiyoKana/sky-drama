@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { Trash2, Plus, Video, Image as ImageIcon } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
+import { safeRandomUUID } from '@/utils/id'
 
 const props = defineProps<{
   storyboard: any[]
@@ -79,7 +80,7 @@ const handleInsertShot = (index: number, position: 'before' | 'after') => {
     const list = props.storyboard
     if (!list) return // Should not happen if parent passes array
     
-    const uuid = crypto.randomUUID()
+    const uuid = safeRandomUUID()
     const newShot = {
         id: `storyboard_${uuid}`,
         shot_id: '', // Will be set by reindex

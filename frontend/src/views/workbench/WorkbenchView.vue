@@ -261,10 +261,10 @@ const fillPrompts = async (script: any) => {
   const tasks: { category: string, item: any, index: number }[] = []
 
   script.characters?.forEach((item: any, i: number) => {
-    if (!item.visual_prompt) tasks.push({ category: 'character', item, index: i })
+    if (!item.visual_prompt && !item.reference_image) tasks.push({ category: 'character', item, index: i })
   })
   script.scenes?.forEach((item: any, i: number) => {
-    if (!item.visual_prompt) tasks.push({ category: 'scene', item, index: i })
+    if (!item.visual_prompt && !item.reference_image) tasks.push({ category: 'scene', item, index: i })
   })
   script.storyboard?.forEach((item: any, i: number) => {
     if (!item.visual_prompt) tasks.push({ category: 'storyboard', item, index: i })
@@ -381,8 +381,8 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
 
   if (hasContent && data.tags?.mode !== 'split') {
     const confirmed = await showConfirm(
-      '当前剧集已存在生成内容。重新生成将覆盖并清空当前所有数据（包括角色、场景和分镜）。此操作不可撤销。',
-      '确认重新生成？'
+      '当前剧集已存在生成内容。重设将覆盖并清空当前所有数据（包括角色、场景和分镜）。此操作不可撤销。',
+      '确认重设？'
     )
     if (!confirmed) return
   }

@@ -4,6 +4,7 @@
   import SmartText from './SmartText.vue'
   import NeuMentionSelector from '@/components/base/NeuMentionSelector.vue'
   import { useMention } from '@/utils/useMention'
+  import { resolveImageUrl } from '@/utils/assets'
   
   const props = defineProps<{
     visible: boolean
@@ -69,13 +70,13 @@
           id: c.id, 
           name: c.name, 
           type: 'character' as const, 
-          image_url: c.image_url 
+          image_url: resolveImageUrl(c.image_url || c.reference_image) 
       }))
       const scenes = props.allScenes.map(s => ({ 
           id: s.id, 
           name: s.location_name, 
           type: 'scene' as const, 
-          image_url: s.image_url 
+          image_url: resolveImageUrl(s.image_url || s.reference_image) 
       }))
       return [...chars, ...scenes]
   })
@@ -499,7 +500,7 @@
                           <textarea 
                              v-model="manualPrompt"
                              class="w-full h-24 bg-white/60 rounded-xl p-3 text-sm text-gray-700 placeholder-gray-400 resize-none border border-transparent focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all outline-none leading-relaxed"
-                             placeholder="在此输入补充描述，或留空直接重新生成..."
+                             placeholder="在此输入补充描述，或留空直接重设..."
                              :disabled="isCurrentGenerating"
                           ></textarea>
                           
@@ -559,8 +560,8 @@
                     >
                         <div class="aspect-video w-full h-full relative flex items-center justify-center">
                             <img 
-                            v-if="baseRightItem.image_url" 
-                            :src="baseRightItem.image_url" 
+                            v-if="baseRightItem.image_url || baseRightItem.reference_image" 
+                            :src="resolveImageUrl(baseRightItem.image_url || baseRightItem.reference_image)" 
                             class="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
                             />
                             <div v-else class="text-gray-400 text-sm flex flex-col items-center gap-2">
@@ -606,8 +607,8 @@
                   <template v-if="flipperFrontItem">
                       <div class="w-full h-full flex items-center justify-center p-4">
                           <img 
-                            v-if="flipperFrontItem.image_url" 
-                            :src="flipperFrontItem.image_url" 
+                            v-if="flipperFrontItem.image_url || flipperFrontItem.reference_image" 
+                            :src="resolveImageUrl(flipperFrontItem.image_url || flipperFrontItem.reference_image)" 
                             class="max-w-full max-h-full object-contain rounded-lg"
                           />
                       </div>

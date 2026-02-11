@@ -31,6 +31,14 @@ export const aiApi = {
     testConnection: (apiKeyId: number) => request.post('/ai/test-connection', { api_key_id: apiKeyId }),
     updateScriptItem: (data: { episode_id: number, item_id: string, updates: any }) => request.post('/ai/script/update_item', data),
     deleteScriptItem: (data: { episode_id: number, item_id: string }) => request.post('/ai/script/delete_item', data),
+    uploadReference: (file: File, category?: string) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (category) formData.append('category', category)
+      return request.post('/ai/upload-reference', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    },
     skillsStream: async (data: GenerateParams, callbacks: StreamCallbacks, signal?: AbortSignal) => {
       const { onMessage, onError, onFinish } = callbacks;
   
@@ -127,7 +135,6 @@ export const projectApi = {
 }
 
 // --- Episodes ---
-// 假设后端已有对应路由，若无请按 Project 逻辑补充
 export const episodeApi = {
   list: (projectId: number) => request.get(`/projects/${projectId}/episodes`),
   create: (projectId: number, data: { title: string }) => request.post(`/projects/${projectId}/episodes`, data),
@@ -161,7 +168,7 @@ export const episodeApi = {
 }
 
 
-// --- API Keys (对应后端的 ApiKey 模型) ---
+// --- API Keys ---
 export const apiKeyApi = {
   list: () => request.get('/apikeys/'), 
   create: (data: any) => request.post('/apikeys/', data),

@@ -9,6 +9,7 @@ import { useMessage } from '@/utils/useMessage'
 import { useConfirm } from '@/utils/useConfirm'
 import { debugLogger } from '@/utils/debugLogger'
 import { resolveImageUrl } from '@/utils/assets'
+import { safeRandomUUID } from '@/utils/id'
 import BookPreview from './BookPreview.vue'
 import CharacterCreateModal from './CharacterCreateModal.vue'
 import VideoPreviewModal from './VideoPreviewModal.vue'
@@ -95,11 +96,11 @@ const handleAddItem = async (type: 'chars' | 'scenes' | 'board') => {
     if (!root.scenes) root.scenes = []
     if (!root.storyboard) root.storyboard = []
 
-    const uuid = crypto.randomUUID()
+    const uuid = safeRandomUUID()
 
     if (type === 'scenes') {
         const timestamp = Math.floor(Date.now() / 1000)
-        const suffix = crypto.randomUUID().substring(0, 4)
+        const suffix = safeRandomUUID().substring(0, 4)
         const index = root.scenes.length
         
         const newScene = {
@@ -107,7 +108,8 @@ const handleAddItem = async (type: 'chars' | 'scenes' | 'board') => {
             location_name: '新场景',
             mood: '中性',
             visual_prompt: '请点击此处编辑场景描述...',
-            image_url: ''
+            image_url: '',
+            reference_image: ''
         }
         root.scenes.push(newScene)
         emit('request-save')
@@ -160,7 +162,7 @@ const handleCharConfirm = (charData: any) => {
     if (!root.characters) root.characters = []
     
     const timestamp = Math.floor(Date.now() / 1000)
-    const suffix = crypto.randomUUID().substring(0, 4)
+    const suffix = safeRandomUUID().substring(0, 4)
     const index = root.characters.length
 
     const newChar = {
@@ -168,7 +170,8 @@ const handleCharConfirm = (charData: any) => {
         name: charData.name,
         role: charData.role,
         description: charData.description,
-        image_url: ''
+        image_url: '',
+        reference_image: ''
     }
     root.characters.push(newChar)
     showCharModal.value = false
@@ -240,6 +243,12 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
       Object.assign(item, updates)
   }
 
+  const category = activeTab.value === 'chars' ? 'character' : (activeTab.value === 'scenes' ? 'scene' : 'storyboard')
+  if (type === 'image' && item.reference_image && (category === 'character' || category === 'scene')) {
+      const confirmed = await showConfirm('已上传参考图，将使用参考图和画风生成新的设定图，是否继续？')
+      if (!confirmed) return
+  }
+
   generatingItems[itemId] = 0 // Start progress
   message.info(`开始生成 ${type === 'image' ? '图片' : (type === 'video' ? '视频' : '提示词')}...`)
 
@@ -286,13 +295,17 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
       const contextScenes = allScenes.filter((s: any) => s.id && finalPrompt.includes(s.id))
 
       const data: any = { 
-          category: activeTab.value === 'chars' ? 'character' : (activeTab.value === 'scenes' ? 'scene' : 'storyboard'),
+          category,
           context_characters: contextCharacters,
           context_scenes: contextScenes
       }
 
       if (generationMode) {
           data.generation_mode = generationMode
+      }
+
+      if (data.category !== 'storyboard' && item.reference_image) {
+          data.reference_image = item.reference_image
       }
 
       if (type === 'video' && item.image_url) {
@@ -412,6 +425,25 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
   }
 }
 
+const handleUploadReference = async (item: any, file: File, category: 'character' | 'scene') => {
+    if (!file) return
+    try {
+        const res: any = await aiApi.uploadReference(file, category)
+        const url = res?.url
+        if (!url) {
+            throw new Error('Upload failed: no url returned')
+        }
+        item.reference_image = url
+        if (item.id) {
+            await handleUpdateItem(item.id, { reference_image: url })
+        }
+        message.success('参考图已上传')
+    } catch (e) {
+        console.error(e)
+        message.error('上传失败')
+    }
+}
+
 const openPreview = (items: any[], index: number) => {
   previewList.value = items
   previewIndex.value = index
@@ -469,6 +501,7 @@ const openPreview = (items: any[], index: number) => {
               @preview="(idx) => openPreview(standardizedData?.characters || [], idx)"
               @add="handleAddItem('chars')"
               @generate="handleGenerate"
+              @upload-reference="(item, _idx, file) => handleUploadReference(item, file, 'character')"
             />
 
             <!-- Scenes -->
@@ -481,6 +514,7 @@ const openPreview = (items: any[], index: number) => {
               @preview="(idx) => openPreview(standardizedData?.scenes || [], idx)"
               @add="handleAddItem('scenes')"
               @generate="handleGenerate"
+              @upload-reference="(item, _idx, file) => handleUploadReference(item, file, 'scene')"
             />
 
             <!-- Storyboard -->

@@ -57,7 +57,6 @@
   })
   
   const getEpisodeDuration = (ep: any) => {
-      // 1. Try to get from AI config's timeline data
       if (ep.ai_config && ep.ai_config.timeline_data) {
           const mainTrack = ep.ai_config.timeline_data.find((t: any) => t.id === 1 || t.type === 'video')
           if (mainTrack && mainTrack.items && mainTrack.items.length > 0) {
@@ -95,7 +94,6 @@
     }
   }, { immediate: true })
   
-  // --- CRUD 逻辑 (保持不变) ---
   const startAdd = () => {
     isAdding.value = true
     tempTitle.value = ''

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { Trash2, MapPin, Maximize2, Image as ImageIcon, Plus } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { Trash2, MapPin, Maximize2, Image as ImageIcon, Plus, Upload } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
+import { resolveImageUrl } from '@/utils/assets'
 
 defineProps<{
   scenes: any[]
@@ -13,7 +15,25 @@ const emit = defineEmits<{
   (e: 'preview', index: number): void
   (e: 'add'): void
   (e: 'generate', type: 'image', item: any, index: number): void
+  (e: 'upload-reference', item: any, index: number, file: File): void
 }>()
+
+const uploadInputs = ref<(HTMLInputElement | null)[]>([])
+
+const triggerUpload = (index: number) => {
+  uploadInputs.value[index]?.click()
+}
+
+const handleFileChange = (event: Event, item: any, index: number) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    emit('upload-reference', item, index, file)
+  }
+  if (target) {
+    target.value = ''
+  }
+}
 </script>
 
 <template>
@@ -40,9 +60,13 @@ const emit = defineEmits<{
             @click="emit('preview', idx)"
           >
              <!-- Image or Placeholder -->
-             <img v-if="scene.image_url" :src="scene.image_url" class="w-full h-full object-cover" />
+             <img v-if="scene.image_url || scene.reference_image" :src="resolveImageUrl(scene.image_url || scene.reference_image)" class="w-full h-full object-cover" />
              <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-xs italic">
                 暂无图片
+             </div>
+
+             <div v-if="scene.reference_image && !scene.image_url" class="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-semibold bg-orange-100/90 text-orange-700 border border-orange-200 rounded">
+                参考
              </div>
 
              <!-- Translucent Prompt Overlay -->
@@ -73,15 +97,31 @@ const emit = defineEmits<{
                   </div>
               </div>
               
-              <NeuButton 
-                v-else
-                size="sm" 
-                class="w-full text-xs"
-                @click="emit('generate', 'image', scene, idx)"
-              >
-                 <ImageIcon class="w-3.5 h-3.5 mr-1.5" />
-                 {{ scene.image_url ? '重新生成' : '生成场景图' }}
-              </NeuButton>
+              <div v-else class="flex gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    :ref="(el) => (uploadInputs[idx] = el as HTMLInputElement)"
+                    @change="(e) => handleFileChange(e, scene, idx)"
+                  />
+                  <NeuButton
+                    size="sm"
+                    class="flex-1 text-xs"
+                    @click="triggerUpload(idx)"
+                  >
+                     <Upload class="w-3.5 h-3.5 mr-1.5" />
+                     参考
+                  </NeuButton>
+                  <NeuButton 
+                    size="sm"
+                    class="flex-1 text-xs"
+                    @click="emit('generate', 'image', scene, idx)"
+                  >
+                     <ImageIcon class="w-3.5 h-3.5 mr-1.5" />
+                     {{ scene.image_url ? '重设' : '生成场景图' }}
+                  </NeuButton>
+              </div>
           </div>
       </div>
 

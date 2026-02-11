@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { Trash2, Maximize2, Image as ImageIcon, Plus } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { Trash2, Maximize2, Image as ImageIcon, Plus, Upload } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
+import { resolveImageUrl } from '@/utils/assets'
 
 defineProps<{
   characters: any[]
@@ -12,7 +14,25 @@ const emit = defineEmits<{
   (e: 'preview', index: number): void
   (e: 'add'): void
   (e: 'generate', type: 'image', item: any, index: number): void
+  (e: 'upload-reference', item: any, index: number, file: File): void
 }>()
+
+const uploadInputs = ref<(HTMLInputElement | null)[]>([])
+
+const triggerUpload = (index: number) => {
+  uploadInputs.value[index]?.click()
+}
+
+const handleFileChange = (event: Event, item: any, index: number) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    emit('upload-reference', item, index, file)
+  }
+  if (target) {
+    target.value = ''
+  }
+}
 </script>
 
 <template>
@@ -35,7 +55,7 @@ const emit = defineEmits<{
                   class="w-12 h-12 rounded-full shadow-sm border-2 border-white overflow-hidden relative group/avatar bg-blue-50 flex items-center justify-center cursor-pointer"
                   @click="emit('preview', idx)"
                >
-                   <img v-if="char.image_url" :src="char.image_url" class="w-full h-full object-cover transition-transform duration-500 group-hover/avatar:scale-110" />
+                   <img v-if="char.image_url || char.reference_image" :src="resolveImageUrl(char.image_url || char.reference_image)" class="w-full h-full object-cover transition-transform duration-500 group-hover/avatar:scale-110" />
                    <span v-else class="text-blue-500 font-bold text-lg">{{ char.name ? char.name[0] : '?' }}</span>
                    
                    <!-- Hover Overlay for Image -->
@@ -47,6 +67,9 @@ const emit = defineEmits<{
               <!-- Role Tag (Moved here) -->
               <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-200/50 text-gray-500 font-medium border border-gray-200 shrink-0 text-center max-w-[60px] truncate">
                   {{ char.role }}
+              </span>
+              <span v-if="char.reference_image && !char.image_url" class="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100/80 text-blue-600 font-medium border border-blue-200 shrink-0 text-center max-w-[60px] truncate">
+                  参考
               </span>
           </div>
 
@@ -77,15 +100,31 @@ const emit = defineEmits<{
               </div>
           </div>
           
-          <NeuButton 
-            v-else
-            size="sm" 
-            class="w-full text-xs"
-            @click="emit('generate', 'image', char, idx)"
-          >
-              <ImageIcon class="w-3.5 h-3.5 mr-1.5" />
-              {{ char.image_url ? '重新生成' : '生成立绘' }}
-          </NeuButton>
+          <div v-else class="flex gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                class="hidden"
+                :ref="(el) => (uploadInputs[idx] = el as HTMLInputElement)"
+                @change="(e) => handleFileChange(e, char, idx)"
+              />
+              <NeuButton
+                size="sm"
+                class="flex-1 text-xs"
+                @click="triggerUpload(idx)"
+              >
+                  <Upload class="w-3.5 h-3.5 mr-1.5" />
+                  参考
+              </NeuButton>
+              <NeuButton 
+                size="sm"
+                class="flex-1 text-xs"
+                @click="emit('generate', 'image', char, idx)"
+              >
+                  <ImageIcon class="w-3.5 h-3.5 mr-1.5" />
+                  {{ char.image_url ? '重设' : '生成立绘' }}
+              </NeuButton>
+          </div>
       </div>
     </div>
 

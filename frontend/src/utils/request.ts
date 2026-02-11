@@ -15,7 +15,6 @@ if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined) {
     service.defaults.baseURL = 'http://127.0.0.1:11451/v1';
 }
 
-// 请求拦截器 (保持不变，用于发送 Token)
 service.interceptors.request.use(
   (config) => {
     const store = useAuthStore()
@@ -67,10 +66,8 @@ const transformUrls = (data: any): any => {
   if (typeof data === 'object') {
     const newData: any = { ...data }
     for (const key in newData) {
-      // 检查键名是否包含 image_url 或 video_url 或 src
-      // 用户要求: "参数中含有image_url和video_url"
-      // 为了兼容性，我们也处理 src (视频库) 和 previewUrl (样式库)
-      if (['image_url', 'video_url', 'src', 'previewUrl'].includes(key)) {
+      // 兼容 image/video/src/previewUrl/reference_image 字段的资源地址
+      if (['image_url', 'video_url', 'src', 'previewUrl', 'reference_image'].includes(key)) {
         if (typeof newData[key] === 'string') {
           newData[key] = resolveImageUrl(newData[key])
         }

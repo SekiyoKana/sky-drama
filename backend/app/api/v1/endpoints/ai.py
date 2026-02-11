@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from typing import Optional
 import re
 import logging
+import os
+import shutil
+import uuid
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -13,6 +16,7 @@ from app.services.ai_engine import AIEngine
 from app.models.apikey import ApiKey
 from app.models.project import Episode
 from app.models.style import Style
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +199,38 @@ async def update_script_item(
     db.refresh(episode)
 
     return {"status": "success", "message": "Item updated", "item_id": req.item_id}
+
+
+@router.post("/upload-reference")
+async def upload_reference_image(
+    file: UploadFile = File(...),
+    category: Optional[str] = Form(None),
+    current_user=Depends(deps.get_current_user),
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="File must have a name")
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+    safe_ext = os.path.splitext(file.filename)[1].lower()
+    if safe_ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+        safe_ext = ".png"
+
+    subdir = "references"
+    if category in {"character", "scene"}:
+        subdir = f"references/{category}"
+
+    assets_dir = os.path.join(settings.ASSETS_DIR, subdir)
+    os.makedirs(assets_dir, exist_ok=True)
+
+    filename = f"ref_{uuid.uuid4().hex}{safe_ext}"
+    file_path = os.path.join(assets_dir, filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    image_url = f"/assets/{subdir}/{filename}"
+    return {"url": image_url}
 
 
 @router.post("/generate")
