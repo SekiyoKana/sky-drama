@@ -109,17 +109,19 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                     size="sm"
                     class="flex-1 text-xs"
                     @click="triggerUpload(idx)"
+                    title="参考图"
+                    aria-label="参考图"
                   >
-                     <Upload class="w-3.5 h-3.5 mr-1.5" />
-                     参考
+                     <Upload class="w-3.5 h-3.5" />
                   </NeuButton>
                   <NeuButton 
                     size="sm"
                     class="flex-1 text-xs"
                     @click="emit('generate', 'image', scene, idx)"
+                    :title="scene.image_url ? '重设' : '生成场景图'"
+                    :aria-label="scene.image_url ? '重设' : '生成场景图'"
                   >
-                     <ImageIcon class="w-3.5 h-3.5 mr-1.5" />
-                     {{ scene.image_url ? '重设' : '生成场景图' }}
+                     <ImageIcon class="w-3.5 h-3.5" />
                   </NeuButton>
               </div>
           </div>

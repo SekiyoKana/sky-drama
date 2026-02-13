@@ -2,18 +2,21 @@
     import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
     import { ChevronDown, Check, Search } from 'lucide-vue-next'
     
-    const props = defineProps<{
+    const props = withDefaults(defineProps<{
       modelValue: string | number
       options: Array<{ label: string, value: string | number }> | string[]
       placeholder?: string
       disabled?: boolean
-    }>()
+      size?: 'mini' | 'default'
+    }>(), {
+      size: 'default'
+    })
     
     const emit = defineEmits(['update:modelValue'])
     
     const isOpen = ref(false)
     const containerRef = ref<HTMLElement | null>(null)
-    const dropdownStyle = ref({ top: '0px', left: '0px', width: '0px' })
+    const dropdownStyle = ref({ top: '0px', left: '0px', width: '0px', zIndex: '99999' })
     const searchQuery = ref('')
     
     // 1. 统一数据格式
@@ -37,27 +40,32 @@
       return found ? found.label : props.placeholder || 'Select...'
     })
     
+    const isMini = computed(() => props.size === 'mini')
+    
     // 3. 计算绝对位置 (防止父级 overflow:hidden 遮挡)
     const updatePosition = () => {
       if (containerRef.value) {
         const rect = containerRef.value.getBoundingClientRect()
         dropdownStyle.value = {
-          top: `${rect.bottom + window.scrollY + 8}px`, // 向下偏移一点
-          left: `${rect.left + window.scrollX}px`,
-          width: `${rect.width}px`
+          top: `${rect.bottom + 8}px`,
+          left: `${rect.left}px`,
+          width: `${rect.width}px`,
+          zIndex: '99999'
         }
       }
     }
     
     const toggle = async () => {
-      if (!props.disabled) {
-        isOpen.value = !isOpen.value
-        if (isOpen.value) {
-          searchQuery.value = '' 
-          await nextTick()
-          updatePosition()
-        }
+      if (props.disabled) return
+      if (isOpen.value) {
+        isOpen.value = false
+        return
       }
+      searchQuery.value = ''
+      updatePosition()
+      isOpen.value = true
+      await nextTick()
+      updatePosition()
     }
     
     const select = (value: string | number) => {
@@ -82,6 +90,7 @@
       document.addEventListener('click', handleClickOutside)
       window.addEventListener('resize', updatePosition)
       window.addEventListener('scroll', updatePosition, true)
+      updatePosition()
     })
     onUnmounted(() => {
       document.removeEventListener('click', handleClickOutside)
@@ -94,16 +103,17 @@
       <div ref="containerRef" class="relative w-full font-serif">
         <div 
           @click="toggle"
-          class="flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all border border-transparent select-none bg-white shadow-sm"
+          class="flex items-center justify-between rounded-xl cursor-pointer transition-all border border-transparent select-none neu-flat"
           :class="[
-            disabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : 
+            isMini ? 'px-3 py-2' : 'px-4 py-3',
+            disabled ? 'opacity-50 cursor-not-allowed' : 
             isOpen ? 'ring-2 ring-blue-100 border-blue-300 text-blue-600' : 'hover:border-gray-300 text-gray-700 border-gray-200'
           ]"
         >
-          <span class="text-sm font-bold truncate">{{ currentLabel }}</span>
+          <span :class="isMini ? 'text-[11px] font-bold truncate' : 'text-sm font-bold truncate'">{{ currentLabel }}</span>
           <ChevronDown 
-            class="w-4 h-4 transition-transform duration-300 text-gray-400"
-            :class="{ 'rotate-180': isOpen }"
+            class="transition-transform duration-300 text-gray-400"
+            :class="[{ 'rotate-180': isOpen }, isMini ? 'w-3.5 h-3.5' : 'w-4 h-4']"
           />
         </div>
     

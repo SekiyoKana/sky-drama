@@ -4,13 +4,14 @@ import time
 import uuid
 import re
 from urllib.parse import urlparse
-from app.utils.http_client import request as http_request
+from app.utils.http_client import request as http_request, download_headers
 import logging
 import tempfile
 import shutil
 from typing import Any, Dict, List, Optional, Union
 from openai import OpenAI
 from fastapi import HTTPException
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,57 @@ class AIEngine:
             
         return path_or_url
 
+    def _normalize_remote_url(self, url: Optional[str], base_url: Optional[str] = None, response_data: Optional[dict] = None) -> Optional[str]:
+        if not url:
+            return url
+
+        url = str(url).strip()
+
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+
+        if url.startswith("//"):
+            return f"https:{url}"
+
+        host = None
+        candidates = []
+        if isinstance(response_data, dict):
+            candidates.append(response_data)
+            data_list = response_data.get("data")
+            if isinstance(data_list, list) and data_list:
+                if isinstance(data_list[0], dict):
+                    candidates.append(data_list[0])
+
+        for candidate in candidates:
+            for key in ("host", "domain", "image_host", "cdn_host", "url_prefix", "base_url"):
+                val = candidate.get(key)
+                if val:
+                    host = str(val).strip()
+                    break
+            if host:
+                break
+
+        if host:
+            if host.startswith("//"):
+                host = f"https:{host}"
+            if not host.startswith("http"):
+                host = f"https://{host.lstrip('/')}"
+            if url.startswith("/"):
+                return f"{host.rstrip('/')}{url}"
+            return f"{host.rstrip('/')}/{url}"
+
+        if base_url:
+            parsed = urlparse(str(base_url))
+            if parsed.scheme and parsed.netloc:
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+                if url.startswith("/"):
+                    return f"{origin}{url}"
+
+        if re.match(r"^[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?$", url):
+            return f"https://{url}"
+
+        return url
+
 
     def _init_client_and_model(self, type="text"):
         config = self.config.get(type, {})
@@ -157,7 +209,49 @@ class AIEngine:
                 "Content-Type": "application/json",
             }
 
+            progress_value = [1]
+            yield self._format_sse("progress", progress_value[0])
+
+            def _bump_progress():
+                if progress_value[0] < 99:
+                    progress_value[0] += 1
+                yield self._format_sse("progress", progress_value[0])
+
+            def _run_with_progress(worker, interval=5):
+                result = {}
+
+                def _target():
+                    try:
+                        result["value"] = worker()
+                    except Exception as e:
+                        result["error"] = e
+
+                t = threading.Thread(target=_target, daemon=True)
+                t.start()
+                while t.is_alive():
+                    time.sleep(interval)
+                    yield from _bump_progress()
+                if "error" in result:
+                    raise result["error"]
+                return result.get("value")
+
             if media_type == "video":
+                video_config = self.config.get("video", {}) if isinstance(self.config, dict) else {}
+                prompt_prefixes = []
+                if video_config.get("remove_bgm") and "无背景音乐" not in prompt:
+                    prompt_prefixes.append("无背景音乐")
+                if video_config.get("keep_voice") and "保留人物声音" not in prompt:
+                    prompt_prefixes.append("保留人物声音")
+                if video_config.get("keep_sfx") and "保留人物音效" not in prompt:
+                    prompt_prefixes.append("保留人物音效")
+                voice_language = video_config.get("voice_language")
+                if voice_language and voice_language not in {"不指定", "unspecified"}:
+                    lang_prompt = f"{voice_language}配音"
+                    if lang_prompt not in prompt:
+                        prompt_prefixes.append(lang_prompt)
+                if prompt_prefixes:
+                    prompt = f"{'，'.join(prompt_prefixes)}。{prompt}"
+
                 headers.pop("Content-Type", None)
 
                 target_model = model_name if model_name else "sora-2"
@@ -189,7 +283,6 @@ class AIEngine:
                             images=[final_ref] if final_ref else []
                         )
                         
-                        yield self._format_sse("progress", 10)
                         yield self._format_sse("status", f"Task created: {task_id}, queuing...")
 
                         def status_listener(status, data):
@@ -198,14 +291,15 @@ class AIEngine:
                             if progress > 99: progress = 99
                             logger.info(f"[Formatter: {status}] Progress: {progress}%")
                         
-                        video_url = formatter.queue(task_id, status_listener) 
+                        video_url = yield from _run_with_progress(
+                            lambda: formatter.queue(task_id, status_listener)
+                        )
                         
                         image_url = video_url
                         ext = "mp4"
 
                     except Exception as e:
-                        yield self._format_sse("error", f"Formatter Error: {str(e)}")
-                        return
+                        raise RuntimeError(f"Formatter Error: {str(e)}")
 
                 else:
                     # 使用已经下载好的 local_ref 传给 combine_image
@@ -236,23 +330,20 @@ class AIEngine:
                     )
 
                     if response.status_code != 200:
-                        yield self._format_sse("error", f"Video Provider Error: {response.text}")
-                        return
+                        raise RuntimeError(f"Video Provider Error: {response.text}")
 
                     task_data = response.json()
                     task_id = task_data.get("id") or task_data.get("detail", {}).get("id")
 
                     if not task_id:
-                            yield self._format_sse("error", f"No task ID returned: {str(task_data)}")
-                            return
-                    
-                    yield self._format_sse("progress", 10)
+                            raise RuntimeError(f"No task ID returned: {str(task_data)}")
                     
                     poll_url = f"{str(base_url).rstrip('/')}{endpoint}/{task_id}"
                     
                     max_retries = 10000
                     for i in range(max_retries):
                         time.sleep(5)
+                        yield from _bump_progress()
                         try:
                             poll_res = http_request("GET", poll_url, headers=headers, timeout=30)
                             if poll_res.status_code != 200:
@@ -264,7 +355,6 @@ class AIEngine:
                             yield self._format_sse("backend_log", log_msg)
                             
                             status = poll_data.get("status")
-                            yield self._format_sse("progress", 10 + int((i / max_retries) * 80))
                             
                             if status == "completed":
                                 video_url = poll_data.get("video_url")
@@ -272,16 +362,14 @@ class AIEngine:
                                     video_url = poll_data.get("detail", {}).get("draft_info", {}).get("downloadable_url")
                                 
                                 if not video_url:
-                                        yield self._format_sse("error", "Video completed but URL not found")
-                                        return
+                                        raise RuntimeError("Video completed but URL not found")
                                 
                                 yield self._format_sse("status", "Downloading video...")
                                 image_url = video_url 
                                 ext = "mp4"
                                 break
                             elif status == "failed":
-                                yield self._format_sse("error", f"Video generation failed: {poll_data.get('fail_reason', 'Unknown')}")
-                                return
+                                raise RuntimeError(f"Video generation failed: {poll_data.get('fail_reason', 'Unknown')}")
                             else:
                                 yield self._format_sse("status", f"Generating video... ({status})")
                         except Exception as e:
@@ -289,8 +377,7 @@ class AIEngine:
                             yield self._format_sse("backend_log", f"Polling error: {str(e)}")
                             continue
                     else:
-                        yield self._format_sse("error", "Video generation timed out")
-                        return
+                        raise RuntimeError("Video generation timed out")
 
             else:
                 target_model = model_name if model_name else "nano-banana"
@@ -301,8 +388,6 @@ class AIEngine:
                 yield self._format_sse("backend_log", f"Image Model: {target_model}")
                 yield self._format_sse("backend_log", f"Image Endpoint: {api_url}")
 
-                yield self._format_sse("progress", 20)
-                
                 payload = {
                     "model": target_model,
                     "prompt": prompt,
@@ -387,18 +472,17 @@ class AIEngine:
                             payload["prompt"] = f"使用第一张图片的图片风格，以第二张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}" if style_image_base64 else f"使用这张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。{prompt}"
     
                 yield self._format_sse("backend_log", "Submitting image generation request...")
-                response = http_request(
-                    "POST", api_url, json=payload, headers=headers, timeout=3000
+
+                response = yield from _run_with_progress(
+                    lambda: http_request("POST", api_url, json=payload, headers=headers, timeout=3000)
                 )
                 yield self._format_sse("backend_log", f"Response Status: {response.status_code}")
-    
+
                 if response.status_code != 200:
-                    yield self._format_sse("error", f"Provider Error: {response.text}")
-                    return
-    
+                    raise RuntimeError(f"Provider Error: {response.text}")
+
                 data = response.json()
-    
-                yield self._format_sse("progress", 50)
+
                 yield self._format_sse("status", "Processing response...")
     
                 image_url = None
@@ -410,18 +494,15 @@ class AIEngine:
                     image_url = data["data"][0].get("url")
     
                 if not image_url:
-                    yield self._format_sse(
-                        "error", f"No image URL in response: {str(data)}"
-                    )
-                    return
+                    raise RuntimeError(f"No image URL in response: {str(data)}")
 
             yield self._format_sse("status", "Downloading asset...")
-            img_res = http_request("GET", image_url, timeout=600)
+            image_url = self._normalize_remote_url(image_url, base_url=base_url, response_data=data)
+            img_res = yield from _run_with_progress(
+                lambda: http_request("GET", image_url, timeout=600, headers=download_headers())
+            )
             if img_res.status_code != 200:
-                yield self._format_sse("error", "Failed to download asset")
-                return
-
-            yield self._format_sse("progress", 90)
+                raise RuntimeError("Failed to download asset")
             filename = f"{uuid.uuid4()}.{ext}"
             
             assets_dir = settings.ASSETS_DIR

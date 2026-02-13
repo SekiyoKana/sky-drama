@@ -102,3 +102,13 @@ def request(
         # Add context for easier debugging
         logger.error(f"[HTTP] {method} {url} failed: {e}")
         raise
+
+
+def download_headers() -> Dict[str, str]:
+    """
+    Use curl-like UA for OSS/CDN image downloads to avoid referer/UA blocks.
+    """
+    return {
+        "User-Agent": "curl/7.79.1",
+        "Accept": "*/*",
+    }

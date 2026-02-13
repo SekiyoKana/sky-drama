@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref, computed, watch, nextTick } from 'vue'
-  import { X, ChevronLeft, ChevronRight, Loader2, Info, ChevronDown } from 'lucide-vue-next'
+  import { X, ChevronLeft, ChevronRight, Loader2, Info, ChevronDown, RefreshCcw, Image as ImageIcon, Video } from 'lucide-vue-next'
   import SmartText from './SmartText.vue'
   import NeuMentionSelector from '@/components/base/NeuMentionSelector.vue'
   import { useMention } from '@/utils/useMention'
@@ -149,6 +149,12 @@
   const isStoryboardMode = computed(() => {
       const item = props.items[currentIndex.value]
       return item && !!item.action && !item.location_name
+  })
+
+  const promptPlaceholder = computed(() => {
+      return isStoryboardMode.value
+        ? '[出场人物]:\n[场景]:\n[分镜描述]:'
+        : '[场景]:\n[场景描述]:'
   })
 
   watch(() => props.visible, (val) => {
@@ -422,7 +428,7 @@
                                  @input="handleInput"
                                  @keydown="handleKeyDown"
                                  class="w-full h-full text-sm text-gray-600 font-mono leading-relaxed bg-transparent border-none outline-none resize-none focus:bg-transparent p-0"
-                                 placeholder="Visual Prompt..."
+                                 :placeholder="promptPlaceholder"
                               ></textarea>
                               <SmartText 
                                  v-else 
@@ -510,9 +516,11 @@
                                  @click="handleRegenerate('text')"
                                  :disabled="isCurrentGenerating"
                                  class="flex-1 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-wide hover:bg-gray-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                 title="重设提示词"
+                                 aria-label="重设提示词"
                               >
-                                 <span v-if="isCurrentGenerating">生成中...</span>
-                                 <span v-else>重设提示词</span>
+                                 <Loader2 v-if="isCurrentGenerating" class="w-4 h-4 animate-spin" />
+                                 <RefreshCcw v-else class="w-4 h-4" />
                               </button>
 
                               <!-- Regenerate Image Button (Image) -->
@@ -520,9 +528,11 @@
                                  @click="handleRegenerate('image')" 
                                  :disabled="isCurrentGenerating"
                                  class="flex-1 py-2.5 rounded-xl bg-gray-800 text-white font-bold text-xs uppercase tracking-wide hover:bg-gray-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 title="生成图片"
+                                 aria-label="生成图片"
                               >
-                                 <span v-if="isCurrentGenerating">生成中...</span>
-                                 <span v-else>生成图片</span>
+                                 <Loader2 v-if="isCurrentGenerating" class="w-4 h-4 animate-spin" />
+                                 <ImageIcon v-else class="w-4 h-4" />
                               </button>
 
                               <!-- Regenerate Video Button (Video) - Storyboard Only -->
@@ -531,9 +541,11 @@
                                  @click="handleRegenerate('video')" 
                                  :disabled="isCurrentGenerating"
                                  class="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed bg-purple-600 text-white hover:bg-purple-500 shadow-purple-200"
+                                 title="生成视频"
+                                 aria-label="生成视频"
                               >
-                                 <span v-if="isCurrentGenerating">生成中...</span>
-                                 <span v-else>生成视频</span>
+                                 <Loader2 v-if="isCurrentGenerating" class="w-4 h-4 animate-spin" />
+                                 <Video v-else class="w-4 h-4" />
                               </button>
                           </div>
                       </div>

@@ -4,6 +4,7 @@
   import { apiKeyApi, aiApi, styleApi } from '@/api'
   import NeuButton from '@/components/base/NeuButton.vue'
   import NeuSelect from '@/components/base/NeuSelect.vue'
+  import NeuSwitch from '@/components/base/NeuSwitch.vue'
   
   const props = defineProps<{
     initialConfig?: any
@@ -17,7 +18,7 @@
     x: window.innerWidth - 340,
     y: 150,
     w: 320,
-    h: 550
+    h: 650
   })
 
   // --- Drag Logic ---
@@ -81,11 +82,21 @@
   const modelOptions = ref<string[]>([]) 
   const availableStyles = ref<any[]>([])
   const modelCache = ref<Record<string, string[]>>({})
+  const voiceLanguageOptions = [
+    { label: '不指定', value: '' },
+    { label: '汉语', value: '汉语' },
+    { label: '英语', value: '英语' },
+    { label: '日语', value: '日语' },
+    { label: '韩语', value: '韩语' },
+    { label: '法语', value: '法语' },
+    { label: '德语', value: '德语' },
+    { label: '西语', value: '西语' }
+  ]
   
   const config = ref<any>({
     text: { key_id: '', model: '' },
     image: { key_id: '', model: '' },
-    video: { key_id: '', model: '' },
+    video: { key_id: '', model: '', remove_bgm: true, keep_voice: true, keep_sfx: true, voice_language: '' },
     audio: { key_id: '', model: '' },
     style: { id: null }
   })
@@ -93,8 +104,8 @@
   const tabs = [
     { id: 'text', label: '剧本', icon: Type, color: 'text-blue-600' },
     { id: 'image', label: '画面', icon: Image, color: 'text-purple-600' },
-    { id: 'video', label: '动态', icon: Video, color: 'text-orange-600' },
-    { id: 'audio', label: '声音', icon: Music, color: 'text-green-600' },
+    { id: 'video', label: '视频', icon: Video, color: 'text-orange-600' },
+    // { id: 'audio', label: '声音', icon: Music, color: 'text-green-600' },
     { id: 'style', label: '风格', icon: Palette, color: 'text-pink-600' },
   ]
   
@@ -129,6 +140,11 @@
         video: { ...config.value.video, ...(newVal.video || {}) },
         audio: { ...config.value.audio, ...(newVal.audio || {}) },
         style: { ...config.value.style, ...(newVal.style || {}) }
+      }
+
+      if (newVal.video && newVal.video.keep_voice_sfx !== undefined) {
+        if (newVal.video.keep_voice === undefined) config.value.video.keep_voice = !!newVal.video.keep_voice_sfx
+        if (newVal.video.keep_sfx === undefined) config.value.video.keep_sfx = !!newVal.video.keep_voice_sfx
       }
     }
   }, { immediate: true, deep: true })
@@ -191,7 +207,7 @@
       <div 
         v-if="visible" 
         ref="cardRef"
-        class="fixed z-40 bg-[#E0E5EC] rounded-[1.5rem] flex flex-col overflow-hidden shadow-2xl border border-white/40 font-sans text-xs text-gray-600"
+        class="fixed z-40 bg-[#E0E5EC] rounded-3xl flex flex-col overflow-hidden shadow-2xl border border-white/40 font-sans text-xs text-gray-600"
         :style="{ left: windowState.x + 'px', top: windowState.y + 'px', width: windowState.w + 'px', height: windowState.h + 'px' }"
       >
         <!-- Header -->
@@ -209,7 +225,7 @@
         </div>
 
         <!-- Tabs -->
-        <div class="flex p-2 gap-1 bg-[#E0E5EC] shrink-0">
+        <div class="flex p-2 mb-3 gap-1 bg-[#E0E5EC] shrink-0">
           <button 
             v-for="t in tabs" 
             :key="t.id"
@@ -269,6 +285,7 @@
                 v-model="config[activeTab].key_id" 
                 :options="availableKeys" 
                 placeholder="选择连接..." 
+                size="mini"
               />
             </div>
   
@@ -281,10 +298,33 @@
                 :options="modelOptions" 
                 :disabled="!config[activeTab].key_id || fetchingModels"
                 placeholder="自动 / 默认"
+                size="mini"
               />
               
               <div v-if="config[activeTab].model" class="flex items-center gap-1.5 text-[10px] text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100 animate-in fade-in slide-in-from-top-1 mt-2">
                 <CheckCircle2 class="w-3 h-3" /> 就绪
+              </div>
+            </div>
+
+            <div v-if="activeTab === 'video'" class="space-y-3">
+              <div class="space-y-2 mb-6">
+                <label class="text-xs font-bold text-gray-500 uppercase">台词语言</label>
+                <NeuSelect
+                    v-model="config.video.voice_language"
+                    :options="voiceLanguageOptions"
+                    placeholder="不指定"
+                    size="mini"
+                    class="mt-2"
+                  />
+              </div>
+
+              <div class="space-y-2">
+                <label class="text-xs font-bold text-gray-500 uppercase">视频提示</label>
+                <div class="neu-flat rounded-xl p-3 flex flex-col gap-3 border border-white/40 mt-2">
+                  <NeuSwitch v-model="config.video.remove_bgm" label="去除背景音乐" />
+                  <NeuSwitch v-model="config.video.keep_voice" label="保留人物声音" />
+                  <NeuSwitch v-model="config.video.keep_sfx" label="保留人物音效" />
+                </div>
               </div>
             </div>
           </div>
