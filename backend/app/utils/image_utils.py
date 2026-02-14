@@ -5,6 +5,7 @@ import base64
 import io
 import os
 import uuid
+import tempfile
 from app.utils.http_client import request as http_request, download_headers
 from PIL import Image
 from typing import List, Optional
@@ -208,6 +209,38 @@ def to_base64(image_file: str) -> Optional[str]:
             return encoded_string
     else:
         return None
+
+def split_grid_image(image_path: str, rows: int = 3, cols: int = 3) -> List[str]:
+    """
+    Split a grid image into individual frames and return file paths.
+    """
+    img = load_image_from_url_or_path(image_path)
+    if img.mode in ('RGBA', 'LA', 'P'):
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'P':
+            img = img.convert('RGBA')
+        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+        img = background
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
+
+    width, height = img.size
+    cell_w = width // cols
+    cell_h = height // rows
+
+    frames: List[str] = []
+    for r in range(rows):
+        for c in range(cols):
+            left = c * cell_w
+            top = r * cell_h
+            right = (c + 1) * cell_w if c < cols - 1 else width
+            bottom = (r + 1) * cell_h if r < rows - 1 else height
+            crop = img.crop((left, top, right, bottom))
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+            crop.save(tmp.name, format='PNG')
+            frames.append(tmp.name)
+
+    return frames
 
 def _merge_images_list(img_objects, mode):
     if not img_objects: return None

@@ -3,6 +3,7 @@ import os
 import time
 import uuid
 import re
+import mimetypes
 from urllib.parse import urlparse
 from app.utils.http_client import request as http_request, download_headers
 import logging
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 from app.models.apikey import ApiKey
 from app.models.asset import Asset
 from app.skills.loader import execute_skill
-from app.utils.image_utils import combine_image, to_base64
+from app.utils.image_utils import combine_image, split_grid_image, to_base64
 from app.schemas.style import StyleBase
 from app.utils.sora_api.main import SoraApiFormatter
 from app.core.config import settings
@@ -259,93 +260,164 @@ class AIEngine:
                 base_url_str = str(base_url).rstrip('/')
                 api_url = f"{base_url_str}{endpoint}"
                 
-                raw_ref = data.get("input_reference")
-                local_ref = self._resolve_local_path(raw_ref)
-                
-                # 如果解析失败（比如下载失败），回退到原始值，虽然可能会报错，但至少尝试了
-                final_ref = local_ref if local_ref else raw_ref
-                
-                images = [{ "data": [final_ref], "direction": "horizontal"}] if final_ref else []
+                mode = data.get("generation_mode") if isinstance(data, dict) else None
+                raw_ref = data.get("input_reference") if isinstance(data, dict) else None
+                ref_list: List[str] = []
+                if isinstance(raw_ref, (list, tuple)):
+                    ref_list = [ref for ref in raw_ref if ref]
+                elif raw_ref:
+                    ref_list = [raw_ref]
+
+                temp_files: List[str] = []
+                image_refs: List[str] = []
+
+                if mode == "keyframes":
+                    if not ref_list:
+                        yield self._format_sse("error", "未找到分镜参考图，请先生成分镜图后再试。")
+                        return
+                    grid_ref = ref_list[0]
+                    grid_local = self._resolve_local_path(grid_ref) or grid_ref
+                    try:
+                        frame_paths = split_grid_image(grid_local, rows=3, cols=3)
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to split storyboard image: {str(e)}")
+                    image_refs = frame_paths
+                    temp_files.extend(frame_paths)
+                else:
+                    final_ref = None
+                    if ref_list:
+                        local_ref = self._resolve_local_path(ref_list[0])
+                        final_ref = local_ref if local_ref else ref_list[0]
+                    image_refs = [final_ref] if final_ref else []
                 
                 formatter = SoraApiFormatter.search(base_url_str)
-                if formatter:
-                    yield self._format_sse("status", f"Delegating to {formatter.name} formatter...")
-                    
-                    try:
-                        task_id = formatter.create(
-                            base_url=base_url_str,
-                            apikey=real_key,
-                            model=target_model,
-                            prompt=f'{prompt}',
-                            seconds=15,
-                            size="1280x720",
-                            watermark=False,
-                            images=[final_ref] if final_ref else []
-                        )
+                try:
+                    if formatter:
+                        yield self._format_sse("status", f"Delegating to {formatter.name} formatter...")
                         
-                        yield self._format_sse("status", f"Task created: {task_id}, queuing...")
+                        try:
+                            task_id = formatter.create(
+                                base_url=base_url_str,
+                                apikey=real_key,
+                                model=target_model,
+                                prompt=f'{prompt}',
+                                seconds=15,
+                                size="1280x720",
+                                watermark=False,
+                                images=image_refs
+                            )
+                            
+                            yield self._format_sse("status", f"Task created: {task_id}, queuing...")
 
-                        def status_listener(status, data):
-                            progress = data.get("progress", 0)
-                            if progress < 10: progress = 10
-                            if progress > 99: progress = 99
-                            logger.info(f"[Formatter: {status}] Progress: {progress}%")
-                        
-                        video_url = yield from _run_with_progress(
-                            lambda: formatter.queue(task_id, status_listener)
-                        )
-                        
-                        image_url = video_url
-                        ext = "mp4"
+                            def status_listener(status, data):
+                                progress = data.get("progress", 0)
+                                if progress < 10: progress = 10
+                                if progress > 99: progress = 99
+                                logger.info(f"[Formatter: {status}] Progress: {progress}%")
+                            
+                            video_url = yield from _run_with_progress(
+                                lambda: formatter.queue(task_id, status_listener)
+                            )
+                            
+                            image_url = video_url
+                            ext = "mp4"
 
-                    except Exception as e:
-                        raise RuntimeError(f"Formatter Error: {str(e)}")
+                        except Exception as e:
+                            raise RuntimeError(f"Formatter Error: {str(e)}")
 
-                else:
-                    # 使用已经下载好的 local_ref 传给 combine_image
-                    img_stream, mime_type = combine_image(images, direction='vertical')
-                    ext = "png" if mime_type == "image/png" else "jpg"
-                    filename = f"template.{ext}"
+                    else:
+                        if not image_refs:
+                            yield self._format_sse("error", "未找到分镜参考图，请先生成分镜图后再试。")
+                            return
 
-                    form_data = {
-                        "model": target_model,
-                        "prompt": f'{prompt}',
-                        "seconds": "15",
-                        "size": "1280x720",
-                        "watermark": False,
-                    }
+                        form_data = {
+                            "model": target_model,
+                            "prompt": f'{prompt}',
+                            "seconds": "15",
+                            "size": "1280x720",
+                            "watermark": False,
+                        }
 
-                    files_payload = {
-                        "input_reference": (filename, img_stream, mime_type)
-                    }
+                        if mode == "keyframes":
+                            files_payload = []
+                            file_handles = []
+                            try:
+                                for idx, img_path in enumerate(image_refs):
+                                    local_path = self._resolve_local_path(img_path) or img_path
+                                    if not local_path or not os.path.exists(local_path):
+                                        raise RuntimeError("无法读取关键帧参考图，请检查分镜图是否有效。")
 
-                    yield self._format_sse("status", f"Submitting video task to {target_model}...")
-                    response = http_request(
-                        "POST",
-                        api_url,
-                        data=form_data,
-                        files=files_payload,
-                        headers=headers,
-                        timeout=60000
-                    )
+                                    mime_type = mimetypes.guess_type(local_path)[0] or "image/png"
+                                    ext = os.path.splitext(local_path)[1].lstrip(".") or "png"
+                                    filename = f"keyframe_{idx + 1}.{ext}"
+                                    file_handle = open(local_path, "rb")
+                                    file_handles.append(file_handle)
+                                    files_payload.append(
+                                        ("input_reference", (filename, file_handle, mime_type))
+                                    )
 
-                    if response.status_code != 200:
-                        raise RuntimeError(f"Video Provider Error: {response.text}")
+                                yield self._format_sse("status", f"Submitting video task to {target_model}...")
+                                response = http_request(
+                                    "POST",
+                                    api_url,
+                                    data=form_data,
+                                    files=files_payload,
+                                    headers=headers,
+                                    timeout=60000
+                                )
+                            finally:
+                                for file_handle in file_handles:
+                                    try:
+                                        file_handle.close()
+                                    except Exception:
+                                        pass
+                        else:
+                            images_for_combine = [{ "data": image_refs, "direction": "horizontal"}]
+                            img_stream, mime_type = combine_image(images_for_combine, direction='vertical')
+                            ext = "png" if mime_type == "image/png" else "jpg"
+                            filename = f"template.{ext}"
 
-                    task_data = response.json()
-                    task_id = task_data.get("id") or task_data.get("detail", {}).get("id")
+                            files_payload = {
+                                "input_reference": (filename, img_stream, mime_type)
+                            }
+
+                            yield self._format_sse("status", f"Submitting video task to {target_model}...")
+                            response = http_request(
+                                "POST",
+                                api_url,
+                                data=form_data,
+                                files=files_payload,
+                                headers=headers,
+                                timeout=60000
+                            )
+
+                        if response.status_code != 200:
+                            raise RuntimeError(f"Video Provider Error: {response.text}")
+
+                        task_data = response.json()
+                        task_id = task_data.get("id") or task_data.get("detail", {}).get("id")
+                finally:
+                    for temp_path in temp_files:
+                        try:
+                            os.unlink(temp_path)
+                        except Exception:
+                            pass
 
                     if not task_id:
                             raise RuntimeError(f"No task ID returned: {str(task_data)}")
                     
                     poll_url = f"{str(base_url).rstrip('/')}{endpoint}/{task_id}"
+                    poll_headers = dict(headers)
+                    poll_headers.pop("Content-Type", None)
+                    poll_headers.update(download_headers())
+                    poll_headers["Referer"] = ""
                     
                     max_retries = 10000
                     for i in range(max_retries):
                         time.sleep(5)
                         yield from _bump_progress()
                         try:
-                            poll_res = http_request("GET", poll_url, headers=headers, timeout=30)
+                            poll_res = http_request("GET", poll_url, headers=poll_headers, timeout=30)
                             if poll_res.status_code != 200:
                                 continue
                                 

@@ -31,27 +31,27 @@ class Yi(Base):
         if not images:
             raise Exception("ApiYi requires at least one image.")
         
-        image_path_or_url = images[0]
-        image_url = ""
+        image_urls: List[str] = []
 
-        if image_path_or_url.startswith(('http://', 'https://')):
-            image_url = image_path_or_url
-        else:
+        def normalize_image_url(image_path_or_url: str) -> str:
+            if image_path_or_url.startswith(('http://', 'https://')):
+                return image_path_or_url
+            local_path = image_path_or_url
             if image_path_or_url.startswith('/'):
-                image_url = f".{image_path_or_url}"
-            # 本地文件转 Base64
+                local_path = f".{image_path_or_url}"
             try:
-                if os.path.exists(image_url):
-                    with open(image_url, 'rb') as f:
+                if os.path.exists(local_path):
+                    with open(local_path, 'rb') as f:
                         image_data = base64.b64encode(f.read()).decode('utf-8')
-                        ext = image_url.lower().split('.')[-1]
+                        ext = local_path.lower().split('.')[-1]
                         mime_type = f"image/{ext}" if ext in ['png', 'jpg', 'jpeg', 'gif', 'webp'] else "image/jpeg"
-                        image_url = f"data:{mime_type};base64,{image_data}"
-                else:
-                    # 如果不是本地路径也不是http，假设用户传的就是base64或DataURI，直接透传
-                    image_url = image_path_or_url
+                        return f"data:{mime_type};base64,{image_data}"
             except Exception as e:
                 raise Exception(f"Image processing failed: {e}")
+            return image_path_or_url
+
+        for img in images:
+            image_urls.append(normalize_image_url(img))
 
         # 3. 构造 Payload
         # 注意：Sora 2 API 似乎不接受 duration/seconds 参数，主要通过 model 控制 (如 hd, landscape)
@@ -61,10 +61,10 @@ class Yi(Base):
             "messages": [
                 {
                     "role": "user",
-                    "content": [
-                        { "type": "text", "text": prompt },
-                        { "type": "image_url", "image_url": { "url": image_url } }
-                    ]
+                    "content": (
+                        [{ "type": "text", "text": prompt }]
+                        + [{ "type": "image_url", "image_url": { "url": url } } for url in image_urls]
+                    )
                 }
             ]
         }

@@ -28,9 +28,14 @@ class Kie(Base):
         if not images:
             raise Exception("Kie image-to-video model requires at least one image.")
         
-        # API 文档要求 image_urls 为数组，且通常需要公网 URL
-        # 取第一张图片
-        target_image_url = images[0]
+        image_urls: List[str] = []
+        for img in images:
+            encoded = to_base64(img)
+            if encoded:
+                image_urls.append(encoded)
+
+        if not image_urls:
+            raise Exception("Kie image-to-video model requires at least one valid image.")
 
         # 2.2 时长映射 (Default 15s)
         # 文档支持 "10" 或 "15"
@@ -57,7 +62,7 @@ class Kie(Base):
             "model": target_model,
             "input": {
                 "prompt": prompt,
-                "image_urls": [to_base64(target_image_url)], # 注意：文档要求是数组格式
+                "image_urls": image_urls, # 注意：文档要求是数组格式
                 "aspect_ratio": aspect_ratio,
                 "n_frames": n_frames,
                 "upload_method": "s3"

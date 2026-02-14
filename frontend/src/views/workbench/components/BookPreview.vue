@@ -467,11 +467,10 @@
                                    
                                    <!-- Neumorphic Dropdown -->
                                    <div class="relative group/dropdown">
-                                       <div class="flex items-center bg-[#E0E5EC] rounded-xl shadow-[3px_3px_6px_#bec3c9,-3px_-3px_6px_#ffffff] px-3 py-1.5 transition-all hover:scale-[1.02] active:scale-[0.98] active:shadow-[inset_2px_2px_5px_#bec3c9,inset_-2px_-2px_5px_#ffffff] cursor-not-allowed border border-white/50">
-                                           <select v-model="generationMode" class="appearance-none bg-transparent pr-5 text-[10px] font-bold text-gray-600 outline-none pointer-events-none w-full border-none">
+                                       <div class="flex items-center bg-[#E0E5EC] rounded-xl shadow-[3px_3px_6px_#bec3c9,-3px_-3px_6px_#ffffff] px-3 py-1.5 transition-all hover:scale-[1.02] active:scale-[0.98] active:shadow-[inset_2px_2px_5px_#bec3c9,inset_-2px_-2px_5px_#ffffff] cursor-pointer border border-white/50">
+                                           <select v-model="generationMode" class="appearance-none bg-transparent pr-5 text-[10px] font-bold text-gray-600 outline-none w-full border-none">
                                               <option value="single">单图分镜</option>
                                               <option value="keyframes">关键帧</option>
-                                              <option value="keyframes">首尾帧</option>
                                            </select>
                                            <ChevronDown class="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                                        </div>
@@ -490,10 +489,6 @@
                                            <p class="flex gap-2">
                                                <span class="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0"></span>
                                                <span><strong class="text-purple-600">关键帧：</strong>每个关键帧生成一张图片，全部返回给视频模型，当视频模型支持多图参考时开启。</span>
-                                           </p>
-                                           <p class="flex gap-2">
-                                               <span class="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5 shrink-0"></span>
-                                               <span><strong class="text-orange-600">首尾帧：</strong>每个关键帧生成一张图片，以首位帧方式多次返回给视频模型，十分消耗资源。（5张图片就会调用5次）</span>
                                            </p>
                                            
                                            <!-- Neumorphic Arrow -->
