@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
 import router from './router' // 引入配置好的路由
+import { i18n } from '@/i18n'
 
 import { debugLogger } from '@/utils/debugLogger'
 
@@ -25,6 +26,7 @@ window.onunhandledrejection = (event) => {
 }
 
 app.use(createPinia())
+app.use(i18n)
 app.use(router)
 
 app.mount('#app')

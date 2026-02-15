@@ -1,14 +1,25 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watchEffect } from 'vue';
+import { useRoute } from 'vue-router';
 import NeuMessage from './components/base/NeuMessage.vue';
 import GlobalDebug from './components/GlobalDebug.vue';
+import LanguageSwitcher from './components/base/LanguageSwitcher.vue';
 import { logStream } from './utils/logStream';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import axios from 'axios';
+import { useI18n } from 'vue-i18n';
 
 const isBackendReady = ref(false);
-const statusMessage = ref('正在启动...');
+const { t } = useI18n();
+const route = useRoute();
+const showGlobalLanguageSwitcher = computed(() => route.name !== 'Workbench');
+const statusMessage = ref(t('app.startup'));
 const retryCount = ref(0);
+
+watchEffect(() => {
+  if (isBackendReady.value) return;
+  statusMessage.value = retryCount.value > 0 ? t('app.startupHint') : t('app.startup');
+});
 
 const checkBackendHealth = async () => {
   // @ts-ignore
@@ -21,7 +32,6 @@ const checkBackendHealth = async () => {
     logStream.connect(); // Connect logs only after backend is ready
   } catch (e) {
     retryCount.value++;
-    statusMessage.value = `正在启动，首次加载可能需要一些时间...`;
     setTimeout(checkBackendHealth, 1000);
   }
 };
@@ -59,12 +69,15 @@ onMounted(async () => {
 <template>
   <GlobalDebug />
   <NeuMessage />
+  <div v-if="showGlobalLanguageSwitcher" class="fixed top-4 right-4 z-10000">
+    <LanguageSwitcher />
+  </div>
   
   <div v-if="!isBackendReady" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#E0E5EC] text-gray-600">
     <div class="mb-6 relative">
       <img src="/logo.png" alt="Logo" class="w-24 h-24 object-contain animate-bounce" />
     </div>
-    <h2 class="text-xl font-bold mb-2 tracking-wide">Sky Drama</h2>
+    <h2 class="text-xl font-bold mb-2 tracking-wide">{{ t('common.appName') }}</h2>
     <p class="text-sm opacity-70 font-mono">{{ statusMessage }}</p>
     <div class="mt-8 w-64 h-2 bg-gray-200 rounded-full overflow-hidden">
       <div class="h-full bg-blue-500/50 animate-pulse rounded-full" style="width: 100%"></div>

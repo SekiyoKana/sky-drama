@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { AlertTriangle, Check, X } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import NeuButton from '@/components/base/NeuButton.vue'
 import { useConfirm } from '@/utils/useConfirm'
 
 const { state, confirm, cancel } = useConfirm()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -31,7 +33,7 @@ const { state, confirm, cancel } = useConfirm()
             @click="cancel"
           >
             <X class="w-4 h-4 mr-2" />
-            取消
+            {{ t('confirm.cancel') }}
           </NeuButton>
           <NeuButton 
             variant="primary" 
@@ -39,7 +41,7 @@ const { state, confirm, cancel } = useConfirm()
             @click="confirm"
           >
             <Check class="w-4 h-4 mr-2" />
-            确认
+            {{ t('confirm.confirm') }}
           </NeuButton>
         </div>
 

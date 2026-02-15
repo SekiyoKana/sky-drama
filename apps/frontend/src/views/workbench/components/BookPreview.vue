@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { ref, computed, watch, nextTick } from 'vue'
   import { X, ChevronLeft, ChevronRight, Loader2, Info, ChevronDown, RefreshCcw, Image as ImageIcon, Video } from 'lucide-vue-next'
+  import { useI18n } from 'vue-i18n'
   import SmartText from './SmartText.vue'
   import NeuMentionSelector from '@/components/base/NeuMentionSelector.vue'
   import { useMention } from '@/utils/useMention'
@@ -17,6 +18,7 @@
   }>()
   
   const emit = defineEmits(['close', 'regenerate', 'update-item'])
+  const { t } = useI18n()
   
   // Logical Index (The one officially active)
   const currentIndex = ref(0)
@@ -153,8 +155,8 @@
 
   const promptPlaceholder = computed(() => {
       return isStoryboardMode.value
-        ? '[出场人物]:\n[场景]:\n[分镜描述]:'
-        : '[场景]:\n[场景描述]:'
+        ? t('workbench.bookPreview.promptPlaceholderStoryboard')
+        : t('workbench.bookPreview.promptPlaceholderScene')
   })
 
   watch(() => props.visible, (val) => {
@@ -402,7 +404,7 @@
                       <!-- Scene/Storyboard Layout (Standard Book) -->
                       <template v-else>
                           <div class="w-full flex flex-col gap-1 mb-2">
-                             <span v-if="baseLeftItem.shot_id" class="text-xs font-bold text-gray-400 uppercase tracking-wider text-left">Shot {{ baseLeftItem.shot_id }}</span>
+                             <span v-if="baseLeftItem.shot_id" class="text-xs font-bold text-gray-400 uppercase tracking-wider text-left">{{ t('workbench.bookPreview.shot', { id: baseLeftItem.shot_id }) }}</span>
                              <div v-if="readonly" class="text-2xl font-serif font-bold text-gray-800 w-full pb-1 border-b border-transparent">
                                  {{ baseLeftItem.location_name || baseLeftItem.action }}
                              </div>
@@ -410,7 +412,7 @@
                                 v-else
                                 v-model="editableTitle"
                                 class="text-2xl font-serif font-bold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-orange-400 outline-none transition-all w-full placeholder-gray-300"
-                                :placeholder="baseLeftItem.location_name ? '场景名称...' : '分镜动作...'"
+                                :placeholder="baseLeftItem.location_name ? t('workbench.bookPreview.sceneNamePlaceholder') : t('workbench.bookPreview.shotActionPlaceholder')"
                                 @blur="handleInfoUpdate"
                              />
                           </div>
@@ -437,7 +439,7 @@
                                  :scenes="allScenes"
                                  class="font-mono text-sm leading-relaxed"
                               />
-                              <span v-if="!readonly && !isEditingPrompt && !editableScenePrompt" class="text-gray-400 text-sm italic">Click to edit prompt...</span>
+                              <span v-if="!readonly && !isEditingPrompt && !editableScenePrompt" class="text-gray-400 text-sm italic">{{ t('workbench.bookPreview.clickToEditPrompt') }}</span>
 
                               <NeuMentionSelector 
                                  v-if="!readonly"
@@ -458,19 +460,19 @@
                           <div class="flex items-center justify-between">
                               <label class="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
                                  <span class="w-1.5 h-1.5 rounded-full" :class="isCharacterMode ? 'bg-blue-400' : 'bg-orange-400'"></span>
-                                 重绘 / 优化提示词
+                                 {{ t('workbench.bookPreview.regenerateOrRefine') }}
                               </label>
 
                               <!-- Generation Mode Config (Storyboard Only) -->
                               <div v-if="isStoryboardMode" class="flex items-center gap-3 z-20">
-                                   <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">生成模式</span>
+                                   <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ t('workbench.bookPreview.generationMode') }}</span>
                                    
                                    <!-- Neumorphic Dropdown -->
                                    <div class="relative group/dropdown">
                                        <div class="flex items-center bg-[#E0E5EC] rounded-xl shadow-[3px_3px_6px_#bec3c9,-3px_-3px_6px_#ffffff] px-3 py-1.5 transition-all hover:scale-[1.02] active:scale-[0.98] active:shadow-[inset_2px_2px_5px_#bec3c9,inset_-2px_-2px_5px_#ffffff] cursor-pointer border border-white/50">
                                            <select v-model="generationMode" class="appearance-none bg-transparent pr-5 text-[10px] font-bold text-gray-600 outline-none w-full border-none">
-                                              <option value="single">单图分镜</option>
-                                              <option value="keyframes">关键帧</option>
+                                              <option value="single">{{ t('workbench.bookPreview.generationModes.single') }}</option>
+                                              <option value="keyframes">{{ t('workbench.bookPreview.generationModes.keyframes') }}</option>
                                            </select>
                                            <ChevronDown class="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                                        </div>
@@ -484,11 +486,11 @@
                                        <div class="absolute text-left bottom-full right-0 mb-3 w-72 p-4 bg-[#E0E5EC] text-gray-600 text-xs rounded-xl shadow-[5px_5px_10px_#bec3c9,-5px_-5px_10px_#ffffff] opacity-0 group-hover/icon:opacity-100 transition-all pointer-events-none transform translate-y-2 group-hover/icon:translate-y-0 duration-300 leading-relaxed border border-white/50 z-50">
                                            <p class="mb-2 flex gap-2">
                                                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0"></span>
-                                               <span><strong class="text-blue-600">单图分镜：</strong>生成一张包含所有关键信息的图片，作为唯一参考。</span>
+                                               <span><strong class="text-blue-600">{{ t('workbench.bookPreview.generationModes.singleLabel') }}</strong>{{ t('workbench.bookPreview.generationModes.singleDesc') }}</span>
                                            </p>
                                            <p class="flex gap-2">
                                                <span class="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0"></span>
-                                               <span><strong class="text-purple-600">关键帧：</strong>每个关键帧生成一张图片，全部返回给视频模型，当视频模型支持多图参考时开启。</span>
+                                               <span><strong class="text-purple-600">{{ t('workbench.bookPreview.generationModes.keyframesLabel') }}</strong>{{ t('workbench.bookPreview.generationModes.keyframesDesc') }}</span>
                                            </p>
                                            
                                            <!-- Neumorphic Arrow -->
@@ -501,7 +503,7 @@
                           <textarea 
                              v-model="manualPrompt"
                              class="w-full h-24 bg-white/60 rounded-xl p-3 text-sm text-gray-700 placeholder-gray-400 resize-none border border-transparent focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all outline-none leading-relaxed"
-                             placeholder="在此输入补充描述，或留空直接重设..."
+                             :placeholder="t('workbench.bookPreview.manualPromptPlaceholder')"
                              :disabled="isCurrentGenerating"
                           ></textarea>
                           
@@ -511,8 +513,8 @@
                                  @click="handleRegenerate('text')"
                                  :disabled="isCurrentGenerating"
                                  class="flex-1 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-wide hover:bg-gray-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                 title="重设提示词"
-                                 aria-label="重设提示词"
+                                 :title="t('workbench.bookPreview.resetPrompt')"
+                                 :aria-label="t('workbench.bookPreview.resetPrompt')"
                               >
                                  <Loader2 v-if="isCurrentGenerating" class="w-4 h-4 animate-spin" />
                                  <RefreshCcw v-else class="w-4 h-4" />
@@ -523,8 +525,8 @@
                                  @click="handleRegenerate('image')" 
                                  :disabled="isCurrentGenerating"
                                  class="flex-1 py-2.5 rounded-xl bg-gray-800 text-white font-bold text-xs uppercase tracking-wide hover:bg-gray-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                 title="生成图片"
-                                 aria-label="生成图片"
+                                 :title="t('workbench.bookPreview.generateImage')"
+                                 :aria-label="t('workbench.bookPreview.generateImage')"
                               >
                                  <Loader2 v-if="isCurrentGenerating" class="w-4 h-4 animate-spin" />
                                  <ImageIcon v-else class="w-4 h-4" />
@@ -536,8 +538,8 @@
                                  @click="handleRegenerate('video')" 
                                  :disabled="isCurrentGenerating"
                                  class="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed bg-purple-600 text-white hover:bg-purple-500 shadow-purple-200"
-                                 title="生成视频"
-                                 aria-label="生成视频"
+                                 :title="t('workbench.bookPreview.generateVideo')"
+                                 :aria-label="t('workbench.bookPreview.generateVideo')"
                               >
                                  <Loader2 v-if="isCurrentGenerating" class="w-4 h-4 animate-spin" />
                                  <Video v-else class="w-4 h-4" />
@@ -555,7 +557,7 @@
                 <!-- Loading Overlay -->
                 <div v-if="isCurrentGenerating" class="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white rounded-r-2xl">
                     <Loader2 class="w-10 h-10 animate-spin mb-4 text-blue-400" />
-                    <span class="text-sm font-bold tracking-widest animate-pulse">GENERATING... {{ currentProgress }}%</span>
+                    <span class="text-sm font-bold tracking-widest animate-pulse">{{ t('workbench.bookPreview.generating', { progress: currentProgress }) }}</span>
                 </div>
 
                 <template v-if="baseRightItem">
@@ -573,7 +575,7 @@
                             />
                             <div v-else class="text-gray-400 text-sm flex flex-col items-center gap-2">
                                 <Loader2 v-if="isCurrentGenerating" class="animate-spin" />
-                                <span v-else>No Image</span>
+                                <span v-else>{{ t('workbench.bookPreview.noImage') }}</span>
                             </div>
                         </div>
                     </div>
@@ -586,8 +588,8 @@
                     >
                         <div class="p-6 flex flex-col gap-3 flex-1">
                             <div class="flex items-center justify-between shrink-0">
-                                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Visual Prompt</h3>
-                                <span class="text-[10px] text-gray-400">{{ readonly ? 'Read-only' : 'Editable' }}</span>
+                                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">{{ t('workbench.bookPreview.visualPrompt') }}</h3>
+                                <span class="text-[10px] text-gray-400">{{ readonly ? t('workbench.bookPreview.readOnly') : t('workbench.bookPreview.editable') }}</span>
                             </div>
                             <div v-if="readonly" class="w-full flex-1 bg-gray-50 rounded-lg p-3 text-sm font-mono leading-relaxed text-gray-600 border border-gray-200 custom-scroll overflow-y-auto">
                                 {{ baseRightItem.visual_prompt }}
@@ -640,7 +642,7 @@
 
                         <!-- Scene/Storyboard Layout -->
                         <template v-else>
-                            <h2 class="text-2xl font-serif font-bold text-gray-800">{{ flipperBackItem.location_name || `Shot ${flipperBackItem.shot_id}` }}</h2>
+                            <h2 class="text-2xl font-serif font-bold text-gray-800">{{ flipperBackItem.location_name || t('workbench.bookPreview.shot', { id: flipperBackItem.shot_id }) }}</h2>
                             <div class="text-sm text-gray-600 font-mono leading-relaxed bg-white/50 p-4 rounded-lg shadow-sm border border-white/60 w-full text-left">
                                 <SmartText 
                                    :text="flipperBackItem.visual_prompt || flipperBackItem.action" 

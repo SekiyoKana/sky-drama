@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import { ref, watch, nextTick, reactive } from 'vue'
+  import { useI18n } from 'vue-i18n'
   import { useRouter } from 'vue-router'
   import { 
     ArrowLeft, Calendar, Plus, Play, 
@@ -18,6 +19,7 @@
   const emit = defineEmits(['back'])
   const router = useRouter()
   const message = useMessage()
+  const { t, te } = useI18n()
   
   // --- 数据状态 ---
   const episodes = ref<any[]>([])
@@ -72,6 +74,13 @@
       return '00:00'
   }
 
+  const getEpisodeStatus = (status: string | undefined) => {
+    if (!status) return ''
+    const normalized = String(status).trim().toLowerCase()
+    const key = `projects.episode.status.${normalized}`
+    return te(key) ? t(key) : status
+  }
+
   // --- API 逻辑 ---
   const fetchEpisodes = async () => {
     if (!props.project) return
@@ -100,13 +109,13 @@
     nextTick(() => inputRef.value?.focus())
   }
   const confirmAdd = async () => {
-    if (!tempTitle.value.trim()) return message.warning('标题不能为空')
+    if (!tempTitle.value.trim()) return message.warning(t('projects.episode.messages.titleRequired'))
     try {
       await episodeApi.create(props.project.id, { title: tempTitle.value })
-      message.success('新行已写入')
+      message.success(t('projects.episode.messages.created'))
       isAdding.value = false
       fetchEpisodes()
-    } catch (e) { message.error('写入失败') }
+    } catch (e) { message.error(t('projects.episode.messages.createFailed')) }
   }
   const startEdit = (ep: any) => {
     editingId.value = ep.id
@@ -120,8 +129,8 @@
       await episodeApi.update(props.project.id, ep.id, { title: tempTitle.value })
       ep.title = tempTitle.value
       editingId.value = null
-      message.success('修订已保存')
-    } catch (e) { message.error('修订失败') }
+      message.success(t('projects.episode.messages.updated'))
+    } catch (e) { message.error(t('projects.episode.messages.updateFailed')) }
   }
   const handleDeleteClick = (id: number) => { deleteConfirmId.value = deleteConfirmId.value === id ? null : id }
   const confirmDelete = async (id: number) => {
@@ -131,7 +140,7 @@
       try {
         await episodeApi.delete(props.project.id, id)
         episodes.value = episodes.value.filter(ep => ep.id !== id)
-      } catch (e) { message.error('无法抹除') } 
+      } catch (e) { message.error(t('projects.episode.messages.deleteFailed')) } 
       finally { scribblingId.value = null }
     }, 500)
   }
@@ -239,16 +248,16 @@
                     <h1 class="text-3xl font-black text-gray-800 font-serif leading-tight tracking-tight">{{ project.name }}</h1>
                 </div>
                 <div class="flex items-center gap-2 text-xs text-gray-500 mt-1 font-mono">
-                  <Calendar class="w-3 h-3" /> Created: {{ new Date(project.created_at).toLocaleDateString() }}
+                  <Calendar class="w-3 h-3" /> {{ t('projects.episode.createdAt') }}: {{ new Date(project.created_at).toLocaleDateString() }}
                 </div>
               </div>
             </div>
             <div class="flex gap-2">
               <NeuButton @click="archiveVisible = true"  class="bg-white/50 border border-gray-300 shadow-sm text-gray-700 hover:bg-white">
-                <FileText class="w-4 h-4 mr-2" />  设定集
+                <FileText class="w-4 h-4 mr-2" />  {{ t('projects.episode.archive') }}
               </NeuButton>
               <NeuButton v-if="!isAdding" @click="startAdd" class="bg-white/50 border border-gray-300 shadow-sm text-gray-700 hover:bg-white">
-                <Plus class="w-4 h-4 mr-2" /> 创建剧集
+                <Plus class="w-4 h-4 mr-2" /> {{ t('projects.episode.createEpisode') }}
               </NeuButton>
             </div>
           </div>
@@ -266,7 +275,7 @@
                 ref="inputRef"
                 v-model="tempTitle"
                 type="text" 
-                placeholder="Write title here..." 
+                :placeholder="t('projects.episode.writeTitle')" 
                 class="flex-1 bg-transparent outline-none text-xl font-serif text-gray-800 placeholder-gray-400"
                 @keyup.enter="confirmAdd"
                 @keyup.esc="isAdding = false"
@@ -311,7 +320,7 @@
 
               <div v-else class="pt-1">
                 <h3 class="text-xl font-bold text-gray-800 font-serif group-hover/item:text-blue-700 transition-colors leading-none">{{ ep.title }}</h3>
-                <span class="text-[10px] text-gray-400 font-mono uppercase tracking-wider">{{ ep.status }}</span>
+                <span class="text-[10px] text-gray-400 font-mono uppercase tracking-wider">{{ getEpisodeStatus(ep.status) }}</span>
               </div>
             </div>
             
@@ -327,7 +336,7 @@
           </div>
 
           <div v-if="deleteConfirmId === ep.id" class="absolute right-4 top-3 z-20 bg-[#fffefb] shadow-lg border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2 animate-in fade-in zoom-in duration-200">
-            <span class="text-xs font-serif text-gray-500">Scrap?</span>
+            <span class="text-xs font-serif text-gray-500">{{ t('projects.episode.scrapQuestion') }}</span>
             <button @click="confirmDelete(ep.id)" class="text-red-500 hover:bg-red-50 p-1 rounded"><Check class="w-3 h-3"/></button>
             <button @click="deleteConfirmId = null" class="text-gray-400 hover:bg-gray-100 p-1 rounded"><X class="w-3 h-3"/></button>
           </div>

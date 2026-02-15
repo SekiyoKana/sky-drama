@@ -1,6 +1,7 @@
 import { driver, type DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
 import { userApi } from "@/api";
+import { i18n } from "@/i18n";
 
 export interface TourStep {
   element: string;
@@ -213,9 +214,9 @@ export const startOnboardingTour = async (tourId: string, steps: TourStep[]) => 
       animate: true,
       overlayColor: 'rgba(30, 35, 40, 0.9)',
       steps: driverSteps,
-      nextBtnText: '下一步',
-      prevBtnText: '上一步',
-      doneBtnText: '完成',
+      nextBtnText: String(i18n.global.t('tour.next')),
+      prevBtnText: String(i18n.global.t('tour.prev')),
+      doneBtnText: String(i18n.global.t('tour.done')),
       
       onDestroyed: () => {
         localStorage.setItem(storageKey, 'true');

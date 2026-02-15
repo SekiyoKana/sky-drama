@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { styleApi } from '@/api'
 import { Trash2, Image as ImageIcon, Plus, Upload } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
@@ -10,6 +11,7 @@ import defaultImg from '@/assets/default.png'
 
 const message = useMessage()
 const confirmDialog = useConfirm()
+const { t } = useI18n()
 const styles = ref<any[]>([])
 const loading = ref(false)
 
@@ -30,7 +32,7 @@ const fetchStyles = async () => {
         offsetY: (Math.random() * 10 - 5).toFixed(1) // -5px to 5px
     }))
   } catch (e) {
-    message.error('无法加载风格库')
+    message.error(t('projects.styles.messages.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -101,9 +103,9 @@ const handleFileChange = async (e: Event) => {
             previewUrl.value = URL.createObjectURL(processedFile)
             
             const sizeMB = (processedFile.size / (1024 * 1024)).toFixed(2)
-            message.info(`图片已处理为1:1比例 (${sizeMB}MB)`)
+            message.info(t('projects.styles.messages.imageProcessed', { size: sizeMB }))
         } catch (error) {
-            message.error('图片处理失败，请重试')
+            message.error(t('projects.styles.messages.imageProcessFailed'))
             console.error(error)
         }
     }
@@ -114,7 +116,7 @@ const triggerUpload = () => {
 }
 
 const saveStyle = async () => {
-  if (!form.name || !form.file) return message.warning('请提供名称和参考图')
+  if (!form.name || !form.file) return message.warning(t('projects.styles.messages.missingForm'))
   
   const formData = new FormData()
   formData.append('name', form.name)
@@ -122,11 +124,11 @@ const saveStyle = async () => {
 
   try {
     await styleApi.create(formData)
-    message.success('风格模板已保存')
+    message.success(t('projects.styles.messages.saved'))
     resetForm()
     fetchStyles()
   } catch (e) {
-    message.error('保存失败')
+    message.error(t('projects.styles.messages.saveFailed'))
   }
 }
 
@@ -139,13 +141,13 @@ const resetForm = () => {
 }
 
 const deleteStyle = async (id: number) => {
-  if (!await confirmDialog.show('确定删除此风格模板？操作无法撤销。', '删除模板')) return
+  if (!await confirmDialog.show(t('projects.styles.messages.deleteConfirmText'), t('projects.styles.messages.deleteConfirmTitle'))) return
   
   try {
     await styleApi.delete(id)
-    message.success('模板已移除')
+    message.success(t('projects.styles.messages.deleted'))
     fetchStyles()
-  } catch (e) { message.error('删除失败') }
+  } catch (e) { message.error(t('projects.styles.messages.deleteFailed')) }
 }
 
 // const handleConfirmCreate = async (data: any) => {
@@ -171,9 +173,9 @@ const handlePaste = async (e: ClipboardEvent) => {
                     previewUrl.value = URL.createObjectURL(processedFile)
                     
                     const sizeMB = (processedFile.size / (1024 * 1024)).toFixed(2)
-                    message.info(`已粘贴图片 (${sizeMB}MB)`)
+                    message.info(t('projects.styles.messages.imagePasted', { size: sizeMB }))
                 } catch (error) {
-                    message.error('图片粘贴失败')
+                    message.error(t('projects.styles.messages.pasteFailed'))
                     console.error(error)
                 }
                 break
@@ -191,12 +193,12 @@ onMounted(() => {
             element: '#tour-styles-create-btn',
             theme: 'blue',
             image: defaultImg,
-            popover: { title: '创建风格', description: '上传一张参考图，创建一个新的 AI 绘画风格模板。', side: 'left' }
+            popover: { title: t('projects.styles.tour.createTitle'), description: t('projects.styles.tour.createDesc'), side: 'left' }
         },
         {
             element: '#tour-styles-grid',
             theme: 'yellow',
-            popover: { title: '风格库', description: '这里展示了你所有的风格收藏，点击即可管理。', side: 'top' }
+            popover: { title: t('projects.styles.tour.libraryTitle'), description: t('projects.styles.tour.libraryDesc'), side: 'top' }
         }
     ])
 })
@@ -209,12 +211,12 @@ onUnmounted(() => {
 <template>
   <div class="h-full p-10 flex flex-col">
     <div class="flex items-center justify-between mb-2">
-      <h2 class="text-3xl font-black text-gray-800 font-serif">风格模板</h2>
+      <h2 class="text-3xl font-black text-gray-800 font-serif">{{ t('projects.styles.title') }}</h2>
       <NeuButton v-if="!isCreating" size="sm" @click="isCreating = true" id="tour-styles-create-btn">
-        <Plus class="w-4 h-4 mr-2" /> 新建风格
+        <Plus class="w-4 h-4 mr-2" /> {{ t('projects.styles.newStyle') }}
       </NeuButton>
     </div>
-    <p class="text-gray-500 italic font-serif mb-8">定义你的宇宙视觉美学。</p>
+    <p class="text-gray-500 italic font-serif mb-8">{{ t('projects.styles.subtitle') }}</p>
 
     <transition name="fade">
         <div v-if="isCreating" class="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" @click.self="resetForm">
@@ -233,7 +235,7 @@ onUnmounted(() => {
                 <img v-if="previewUrl" :src="previewUrl" class="w-full h-full object-cover" />
                 <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2 hover:bg-gray-200 transition-colors">
                     <Upload class="w-8 h-8" />
-                    <span class="text-xs font-bold uppercase tracking-widest">点击上传参考图</span>
+                    <span class="text-xs font-bold uppercase tracking-widest">{{ t('projects.styles.clickToUpload') }}</span>
                 </div>
                 <input ref="fileInput" type="file" class="hidden" accept="image/*" @change="handleFileChange" />
              </div>
@@ -242,7 +244,7 @@ onUnmounted(() => {
                  <input 
                     v-model="form.name" 
                     type="text" 
-                    placeholder="风格名称..." 
+                    :placeholder="t('projects.styles.namePlaceholder')" 
                     class="w-full text-center font-handwriting text-2xl text-gray-700 bg-transparent border-b border-transparent focus:border-gray-300 outline-none placeholder-gray-300 pb-2"
                     autofocus
                  />
@@ -258,7 +260,7 @@ onUnmounted(() => {
                     :disabled="!form.name || !form.file"
                     class="w-full py-2 bg-gray-800 text-white font-bold text-xs uppercase tracking-widest hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
                  >
-                    保存并入库
+                    {{ t('projects.styles.save') }}
                  </button>
              </div>
            </div>
@@ -303,7 +305,7 @@ onUnmounted(() => {
           <!-- Empty State -->
           <div v-if="styles.length === 0 && !isCreating" class="col-span-full text-center py-12 text-gray-400">
             <ImageIcon class="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p>暂无风格模板</p>
+            <p>{{ t('projects.styles.empty') }}</p>
           </div>
       </div>
     </div>

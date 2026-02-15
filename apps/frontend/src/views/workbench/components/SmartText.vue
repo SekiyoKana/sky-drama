@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, reactive } from 'vue'
 import { User, MapPin } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   text: string
   characters: any[]
   scenes: any[]
 }>()
+const { t } = useI18n()
 
 // Tooltip State
 const tooltipVisible = ref(false)
@@ -46,7 +48,7 @@ const parts = computed(() => {
         type: 'character',
         content: part,
         data: char,
-        label: char ? char.name : `Unknown Char`
+        label: char ? char.name : t('workbench.smartText.unknownCharacter')
       }
     } else if (part.startsWith('{{scene_')) {
       const fullId = part.slice(2, -2)
@@ -56,7 +58,7 @@ const parts = computed(() => {
         type: 'scene',
         content: part,
         data: scene,
-        label: scene ? scene.location_name : `Unknown Scene`
+        label: scene ? scene.location_name : t('workbench.smartText.unknownScene')
       }
     } else {
       return {
@@ -126,10 +128,10 @@ const parts = computed(() => {
                             class="font-bold text-base truncate leading-tight drop-shadow-sm"
                             :class="tooltipData.type === 'character' ? 'text-blue-600' : 'text-orange-600'"
                         >
-                            {{ tooltipData.data?.name || tooltipData.data?.location_name || 'Unknown' }}
+                            {{ tooltipData.data?.name || tooltipData.data?.location_name || t('workbench.smartText.unknown') }}
                         </div>
                         <div class="text-[10px] uppercase font-bold tracking-wider text-gray-400 mt-1">
-                            <span v-if="tooltipData.type === 'scene'">场景</span>
+                            <span v-if="tooltipData.type === 'scene'">{{ t('workbench.smartText.scene') }}</span>
                             <span v-else>{{ tooltipData.data.role }}</span>
                         </div>
                     </div>
@@ -137,7 +139,7 @@ const parts = computed(() => {
                 
                 <!-- Content -->
                 <div v-if="tooltipData.type === 'character'" class="text-xs text-gray-600 leading-relaxed font-medium">
-                     {{ tooltipData.data?.description || tooltipData.data?.mood || 'No details provided.' }}
+                     {{ tooltipData.data?.description || tooltipData.data?.mood || t('workbench.smartText.noDetails') }}
                 </div>
             </div>
         </transition>

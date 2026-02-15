@@ -4,6 +4,7 @@ import {
   Film, Scissors, Wand2, Play, Pause, X, Volume2, VolumeX, CheckCircle2 
 } from 'lucide-vue-next'
 import { useMessage } from '@/utils/useMessage'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   tracks: any[]
@@ -27,6 +28,7 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
+const { t } = useI18n()
 
 const isClippingMode = ref(false)
 const editingClipId = ref<number | null>(null)
@@ -132,7 +134,7 @@ const confirmSplit = () => {
     const clip = clipDialog.targetClip
     
     if (isNaN(splitTime) || splitTime <= 0 || splitTime >= clip.duration) {
-        return message.warning('无效的时间点')
+        return message.warning(t('workbench.timeline.messages.invalidSplitPoint'))
     }
     
     const track = props.tracks[clipDialog.targetTrackIndex]
@@ -145,7 +147,7 @@ const confirmSplit = () => {
     const part1 = {
         ...clip,
         id: Date.now(),
-        name: `${clip.name} (Part 1)`,
+        name: `${clip.name} (${t('workbench.timeline.partLabel', { number: 1 })})`,
         duration: splitTime,
         startTime: currentStart,
     }
@@ -153,7 +155,7 @@ const confirmSplit = () => {
     const part2 = {
         ...clip,
         id: Date.now() + 1,
-        name: `${clip.name} (Part 2)`,
+        name: `${clip.name} (${t('workbench.timeline.partLabel', { number: 2 })})`,
         duration: clip.duration - splitTime,
         startTime: currentStart + splitTime
     }
@@ -163,7 +165,7 @@ const confirmSplit = () => {
     
     track.items.splice(clipIndex, 1, part1, part2)
     
-    message.success('裁剪完成')
+    message.success(t('workbench.timeline.messages.splitDone'))
     emit('persist')
     
     clipDialog.visible = false
@@ -244,7 +246,7 @@ const handleTrackDrop = async (e: DragEvent, trackIndex: number) => {
          const sourceTrack = props.tracks[sourceTrackIndex]
          const targetTrack = props.tracks[trackIndex]
          
-         if (sourceTrack.type !== targetTrack.type) return message.warning('不能跨不同类型的轨道移动')
+         if (sourceTrack.type !== targetTrack.type) return message.warning(t('workbench.timeline.messages.crossTrackNotAllowed'))
          
          const item = sourceTrack.items[sourceItemIndex]
          
@@ -268,7 +270,7 @@ const handleTrackDrop = async (e: DragEvent, trackIndex: number) => {
         const file = e.dataTransfer.files[0]
         if (file?.type.startsWith('audio/')) {
              if (props.tracks[trackIndex].type !== 'audio') {
-                 message.warning('音频文件只能拖入音轨')
+                 message.warning(t('workbench.timeline.messages.audioToAudioTrackOnly'))
                  return
              }
              
@@ -283,7 +285,7 @@ const handleTrackDrop = async (e: DragEvent, trackIndex: number) => {
              if (insertIndex >= 0) props.tracks[trackIndex].items.splice(insertIndex, 0, newItem)
              else props.tracks[trackIndex].items.push(newItem)
 
-             message.success('已添加音频')
+             message.success(t('workbench.timeline.messages.audioAdded'))
              return
         }
     }
@@ -294,10 +296,10 @@ const handleTrackDrop = async (e: DragEvent, trackIndex: number) => {
         const targetTrack = props.tracks[trackIndex]
         
         if (targetTrack.type === 'video' && item.type !== 'video') {
-             return message.warning('只能将视频拖入主轨道')
+             return message.warning(t('workbench.timeline.messages.videoToMainTrackOnly'))
         }
         if (targetTrack.type === 'audio' && item.type !== 'audio') {
-             return message.warning('只能将音频拖入音轨')
+             return message.warning(t('workbench.timeline.messages.audioToAudioTrackOnly'))
         }
 
         const newItem = {
@@ -311,7 +313,7 @@ const handleTrackDrop = async (e: DragEvent, trackIndex: number) => {
         if (insertIndex >= 0) targetTrack.items.splice(insertIndex, 0, newItem)
         else targetTrack.items.push(newItem)
 
-        message.success(`已添加到轨道`)
+        message.success(t('workbench.timeline.messages.addedToTrack'))
         emit('persist')
        } catch(e) {}
     }
@@ -453,7 +455,7 @@ onUnmounted(() => {
                @click="emit('open-library')" 
                class="px-3 py-1.5 rounded-xl transition-all flex items-center gap-2 text-xs font-bold neu-flat hover:text-blue-500 text-gray-500"
              >
-                <Film class="w-4 h-4" /> 素材库
+                <Film class="w-4 h-4" /> {{ t('workbench.timeline.library') }}
              </button>
              <div class="w-px h-5 bg-gray-300 mx-1"></div>
               <div class="flex gap-3">
@@ -461,11 +463,11 @@ onUnmounted(() => {
                   @click="isClippingMode = !isClippingMode"
                   class="p-2 rounded-xl transition-all" 
                   :class="isClippingMode ? 'neu-pressed text-red-500' : 'neu-flat hover:text-blue-500 text-gray-500'"
-                  title="剪辑模式 (点击开启后，点击视频块进行裁剪)"
+                  :title="t('workbench.timeline.clipModeTitle')"
                 >
                    <Scissors class="w-4 h-4" />
                 </button>
-                <button class="p-2 rounded-xl neu-flat hover:text-purple-500 active:neu-pressed transition-all text-gray-500 cursor-not-allowed" title="转场效果(开发中)">
+                <button class="p-2 rounded-xl neu-flat hover:text-purple-500 active:neu-pressed transition-all text-gray-500 cursor-not-allowed" :title="t('workbench.timeline.transitionTitle')">
                   <Wand2 class="w-4 h-4" />
                </button>
                
@@ -492,7 +494,7 @@ onUnmounted(() => {
                    <button 
                      @click="togglePlaybackRate" 
                      class="flex items-center justify-center p-2 rounded-xl transition-all neu-flat hover:text-blue-500 text-gray-500 text-[10px] font-bold w-8 h-8"
-                     title="倍速播放"
+                     :title="t('workbench.timeline.playbackRateTitle')"
                    >
                        {{ playbackRate }}x
                    </button>
@@ -569,7 +571,7 @@ onUnmounted(() => {
                   >
 
            <div class="w-20 text-[10px] font-bold text-gray-400 uppercase shrink-0 flex flex-col justify-center border-r border-gray-300/50 pr-4 select-none h-full">
-             <span class="tracking-widest">{{ track.type === 'video' ? '主轨道' : '音频' }}</span>
+             <span class="tracking-widest">{{ track.type === 'video' ? t('workbench.timeline.mainTrack') : t('workbench.timeline.audioTrack') }}</span>
            </div>
            
            <div 
@@ -580,7 +582,7 @@ onUnmounted(() => {
              @click="handleTrackAreaClick"
            >
              <div v-if="track.items.length === 0" class="text-xs text-gray-400 font-bold italic select-none pointer-events-none opacity-50">
-                {{ track.type === 'video' ? 'Drag videos here' : 'Drag audio here' }}
+                {{ track.type === 'video' ? t('workbench.timeline.dragVideoHere') : t('workbench.timeline.dragAudioHere') }}
              </div>
              
              <div 
@@ -672,13 +674,13 @@ onUnmounted(() => {
         >
             <div class="flex items-center justify-between">
                 <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                    <Scissors class="w-3.5 h-3.5 text-blue-500" /> 裁剪视频
+                    <Scissors class="w-3.5 h-3.5 text-blue-500" /> {{ t('workbench.timeline.splitVideo') }}
                 </h4>
                 <button @click="clipDialog.visible = false" class="p-1 rounded-full hover:bg-gray-200 text-gray-400"><X class="w-3.5 h-3.5" /></button>
             </div>
             
             <div class="flex flex-col gap-1">
-                <label class="text-[10px] text-gray-400 font-bold ml-1">分割点 (秒)</label>
+                <label class="text-[10px] text-gray-400 font-bold ml-1">{{ t('workbench.timeline.splitPointSeconds') }}</label>
                 <div class="flex items-center gap-2">
                     <input 
                         v-model="clipDialog.time" 
@@ -698,7 +700,7 @@ onUnmounted(() => {
                 @click="confirmSplit"
                 class="w-full py-2 rounded-xl neu-flat hover:text-blue-500 active:neu-pressed transition-all text-xs font-bold flex items-center justify-center gap-2"
             >
-                <CheckCircle2 class="w-3.5 h-3.5" /> 确认裁剪
+                <CheckCircle2 class="w-3.5 h-3.5" /> {{ t('workbench.timeline.confirmSplit') }}
             </button>
         </div>
     </Teleport>

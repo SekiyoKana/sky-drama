@@ -1,5 +1,6 @@
 <script setup lang="ts">
     import { ref, onMounted, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
     import { Trash2, Key, Plus, Save, Activity, XCircle } from 'lucide-vue-next'
     import { apiKeyApi, aiApi } from '@/api'
     import NeuButton from '@/components/base/NeuButton.vue'
@@ -10,6 +11,7 @@ import loginImg from '@/assets/login.png'
 
 const message = useMessage()
 const confirmDialog = useConfirm()
+const { t } = useI18n()
 const keys = ref<any[]>([])
 const loading = ref(false)
 const testingId = ref<number | null>(null) // 当前正在测试的 ID
@@ -35,7 +37,7 @@ const form = reactive({
         const res: any = await apiKeyApi.list()
         keys.value = res
       } catch (e) {
-        message.error('无法加载密钥列表')
+        message.error(t('projects.api.messages.loadFailed'))
       } finally {
         loading.value = false
       }
@@ -50,15 +52,15 @@ const form = reactive({
     
 const addKey = async () => {
   if (!form.name) { // Key is optional when updating
-    return message.warning('请填写完整的密钥信息')
+    return message.warning(t('projects.api.messages.fillKeyInfo'))
   }
   // Only check key if creating new
   if (!editingId.value && !form.key) {
-      return message.warning('请填写密钥')
+      return message.warning(t('projects.api.messages.fillKey'))
   }
   
   if (!validateUrl(form.base_url)) {
-    return message.error('Base URL 格式不正确 (需以 http:// 或 https:// 开头)')
+    return message.error(t('projects.api.messages.badBaseUrl'))
   }
 
   try {
@@ -75,7 +77,7 @@ const addKey = async () => {
           video_fetch_endpoint: form.video_fetch_endpoint,
           audio_endpoint: form.audio_endpoint
         })
-        message.success('密钥已更新')
+        message.success(t('projects.api.messages.updated'))
     } else {
         res = await apiKeyApi.create({
           platform: form.platform,
@@ -88,7 +90,7 @@ const addKey = async () => {
           video_fetch_endpoint: form.video_fetch_endpoint,
           audio_endpoint: form.audio_endpoint
         })
-        message.success('密钥已安全存储')
+        message.success(t('projects.api.messages.saved'))
     }
 
     // Reset and refresh
@@ -104,7 +106,7 @@ const addKey = async () => {
 
   } catch (e) {
 
-    message.error('保存失败，请检查网络')
+    message.error(t('projects.api.messages.saveFailed'))
   }
 }
 
@@ -132,13 +134,13 @@ const editKey = (k: any) => {
 }
 
 const deleteKey = async (id: number) => {
-  if(!await confirmDialog.show('确定将此密钥销毁？此操作不可逆。', '销毁密钥')) return
+  if(!await confirmDialog.show(t('projects.api.messages.deleteConfirmText'), t('projects.api.messages.deleteConfirmTitle'))) return
   
   try {
     await apiKeyApi.delete(id)
-    message.success('密钥已销毁')
+    message.success(t('projects.api.messages.deleted'))
     fetchKeys()
-  } catch (e) { message.error('删除失败') }
+  } catch (e) { message.error(t('projects.api.messages.deleteFailed')) }
 }
 
     
@@ -147,9 +149,9 @@ const deleteKey = async (id: number) => {
       try {
         const res: any = await aiApi.testConnection(id)
         console.log(res)
-        message.success(`联通成功！可用模型: ${res.models.slice(0, 3).join(', ')}...`)
+        message.success(t('projects.api.messages.connectionSuccess', { models: res.models.slice(0, 3).join(', ') }))
       } catch (e: any) {
-        message.error(`连接失败: ${e.response?.data?.detail || '网络错误'}`)
+        message.error(t('projects.api.messages.connectionFailed', { detail: e.response?.data?.detail || t('projects.api.messages.networkError') }))
       } finally {
         testingId.value = null
       }
@@ -163,12 +165,12 @@ const deleteKey = async (id: number) => {
               element: '#tour-api-create-btn', 
               theme: 'pink',
               image: loginImg,
-              popover: { title: '连接模型', description: '点击添加新的 API Key。', side: 'left' } 
+              popover: { title: t('projects.api.tour.connectTitle'), description: t('projects.api.tour.connectDesc'), side: 'left' } 
           },
           { 
               element: '#tour-api-list', 
               theme: 'yellow',
-              popover: { title: '密钥管理', description: '这里显示已保存的密钥。你可以测试连接状态，或删除无效密钥。', side: 'top' } 
+              popover: { title: t('projects.api.tour.manageTitle'), description: t('projects.api.tour.manageDesc'), side: 'top' } 
           }
       ])
     })
@@ -177,12 +179,12 @@ const deleteKey = async (id: number) => {
     <template>
       <div class="h-full p-10 flex flex-col relative">
         <div class="flex items-center justify-between mb-2">
-            <h2 class="text-3xl font-black text-gray-800 font-serif">API 设置</h2>
+            <h2 class="text-3xl font-black text-gray-800 font-serif">{{ t('projects.api.title') }}</h2>
             <NeuButton v-if="!isCreating" size="sm" @click="isCreating = true" id="tour-api-create-btn">
-                <Plus class="w-4 h-4 mr-2" /> 新建密钥
+                <Plus class="w-4 h-4 mr-2" /> {{ t('projects.api.newKey') }}
             </NeuButton>
         </div>
-        <p class="text-gray-500 italic font-serif mb-8">管理您的 APIKEY。</p>
+        <p class="text-gray-500 italic font-serif mb-8">{{ t('projects.api.subtitle') }}</p>
 
     <transition name="drop-paper">
       <div v-if="isCreating" class="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" @click.self="cancelCreate">
@@ -195,28 +197,28 @@ const deleteKey = async (id: number) => {
             </button>
 
             <h3 class="text-xl font-black text-gray-800 font-serif mb-6 text-center border-b-2 border-gray-800 pb-2">
-                {{ editingId ? '编辑连接' : '新建连接' }}
+                {{ editingId ? t('projects.api.editConnection') : t('projects.api.newConnection') }}
             </h3>
 
             <div class="space-y-4 overflow-y-auto custom-scroll pr-2 flex-1">
                <div class="grid grid-cols-2 gap-4">
                   <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">平台类型</label>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.platformType') }}</label>
                     <input v-model="form.platform" type="text" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-serif placeholder-gray-400 transition-colors" placeholder="openai" />
                   </div>
                   <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">连接名称</label>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.connectionName') }}</label>
                     <input v-model="form.name" type="text" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-serif placeholder-gray-400 transition-colors" placeholder="My LLM" />
                   </div>
                </div>
 
                <div>
-                  <label class="block text-xs font-bold text-gray-500 uppercase mb-1">接口地址 (Base URL)</label>
+                  <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.baseUrl') }}</label>
                   <input v-model="form.base_url" type="text" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-mono placeholder-gray-400 transition-colors" placeholder="https://api.openai.com/v1" />
                </div>
 
                <div>
-                  <label class="block text-xs font-bold text-gray-500 uppercase mb-1">密钥 (API Key) {{ editingId ? '(留空不修改)' : '' }}</label>
+                  <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.apiKey') }} {{ editingId ? t('projects.api.keepEmptyHint') : '' }}</label>
                   <div class="relative group">
                     <input v-model="form.key" type="password" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-mono pr-8 placeholder-gray-400 transition-colors" placeholder="sk-..." />
                     <Key class="w-4 h-4 text-gray-300 absolute right-2 top-2 group-focus-within:text-blue-500 transition-colors" />
@@ -224,26 +226,26 @@ const deleteKey = async (id: number) => {
                </div>
 
                <div class="pt-4 border-t border-gray-100">
-                  <p class="text-xs font-bold text-gray-400 uppercase mb-3">接口重写 (Endpoint Overrides)</p>
+                  <p class="text-xs font-bold text-gray-400 uppercase mb-3">{{ t('projects.api.endpointOverrides') }}</p>
                   <div class="space-y-3">
                      <div class="flex items-center gap-3">
-                        <span class="text-xs font-mono text-gray-400 w-16 text-right">对话 Chat</span>
+                        <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.chat') }}</span>
                         <input v-model="form.text_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" placeholder="/chat/completions" />
                      </div>
                      <div class="flex items-center gap-3">
-                        <span class="text-xs font-mono text-gray-400 w-16 text-right">绘图 Image</span>
+                        <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.image') }}</span>
                         <input v-model="form.image_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" placeholder="/images/generations" />
                      </div>
                      <div class="flex items-center gap-3">
-                        <span class="text-xs font-mono text-gray-400 w-16 text-right">视频 Video</span>
+                        <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.video') }}</span>
                         <input v-model="form.video_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" placeholder="/videos" />
                      </div>
                      <div class="flex items-center gap-3">
-                        <span class="text-xs font-mono text-gray-400 w-16 text-right">获取视频 Fetch</span>
+                        <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.fetchVideo') }}</span>
                         <input v-model="form.video_fetch_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none cursor-not-allowed opacity-75" placeholder="/videos/{task_id}" readonly />
                      </div>
                      <div class="flex items-center gap-3">
-                        <span class="text-xs font-mono text-gray-400 w-16 text-right">音频 Audio</span>
+                        <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.audio') }}</span>
                         <input v-model="form.audio_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" />
                      </div>
                   </div>
@@ -251,12 +253,12 @@ const deleteKey = async (id: number) => {
             </div>
 
             <div class="mt-6 pt-4 border-t border-gray-800/10 flex justify-end gap-3">
-               <button @click="cancelCreate" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 font-bold transition-colors">取消</button>
+               <button @click="cancelCreate" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 font-bold transition-colors">{{ t('common.cancel') }}</button>
                <button 
                  @click="addKey" 
                  class="px-6 py-2 bg-gray-800 text-white font-bold tracking-widest hover:bg-black transition-colors flex items-center shadow-lg active:scale-95 transform duration-150 text-sm"
                >
-                 <Save class="w-4 h-4 mr-2" /> 保存设置
+                 <Save class="w-4 h-4 mr-2" /> {{ t('common.save') }}
                </button>
             </div>
          </div>
@@ -264,7 +266,7 @@ const deleteKey = async (id: number) => {
     </transition>
     
         <div class="flex-1 overflow-y-auto custom-scroll pr-2 -mr-2" id="tour-api-list">
-          <h3 class="text-sm font-bold text-gray-700 uppercase mb-4">活跃 APIKEY</h3>
+          <h3 class="text-sm font-bold text-gray-700 uppercase mb-4">{{ t('projects.api.activeKeys') }}</h3>
           <div class="space-y-3">
 
              <div 
@@ -283,7 +285,7 @@ const deleteKey = async (id: number) => {
                      {{ k.name }}
                      <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{{ k.masked_key }}</span>
                    </div>
-                   <div class="text-xs text-gray-400 font-mono mt-1">{{ k.platform }} • {{ k.base_url || '默认节点' }}</div>
+                   <div class="text-xs text-gray-400 font-mono mt-1">{{ k.platform }} • {{ k.base_url || t('projects.api.defaultNode') }}</div>
                  </div>
                </div>
                
@@ -296,7 +298,7 @@ const deleteKey = async (id: number) => {
                   :disabled="testingId === k.id"
                 >
                   <Activity class="w-3 h-3" :class="{'animate-pulse': testingId === k.id}" />
-                  {{ testingId === k.id ? '测试中...' : '测试' }}
+                  {{ testingId === k.id ? t('projects.api.testing') : t('projects.api.test') }}
                 </button>
                 
                 <button @click="deleteKey(k.id)" class="text-gray-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-lg">
@@ -306,7 +308,7 @@ const deleteKey = async (id: number) => {
             </div>
             
             <div v-if="keys.length === 0" class="text-center py-10 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
-               暂无活跃密钥。请添加一个以开始生成。
+               {{ t('projects.api.empty') }}
             </div>
           </div>
         </div>

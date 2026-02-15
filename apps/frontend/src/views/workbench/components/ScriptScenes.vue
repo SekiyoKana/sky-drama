@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { Trash2, MapPin, Maximize2, Image as ImageIcon, Plus, Upload } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
 import { resolveImageUrl } from '@/utils/assets'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{
   scenes: any[]
@@ -17,6 +18,7 @@ const emit = defineEmits<{
   (e: 'generate', type: 'image', item: any, index: number): void
   (e: 'upload-reference', item: any, index: number, file: File): void
 }>()
+const { t } = useI18n()
 
 const uploadInputs = ref<(HTMLInputElement | null)[]>([])
 
@@ -46,11 +48,11 @@ const handleFileChange = (event: Event, item: any, index: number) => {
               <Trash2 class="w-3.5 h-3.5" />
           </button>
             <div class="flex items-center justify-between mb-2 mr-6">
-              <div class="flex items-center gap-2 cursor-pointer hover:bg-black/5 rounded px-1 transition-colors" @click="emit('edit', scene)" title="点击编辑">
+              <div class="flex items-center gap-2 cursor-pointer hover:bg-black/5 rounded px-1 transition-colors" @click="emit('edit', scene)" :title="t('workbench.scriptScenes.clickToEdit')">
                   <MapPin class="w-4 h-4 text-orange-500" />
                   <span class="text-xs font-bold text-gray-700 truncate max-w-[140px]">{{ scene.location_name }}</span>
               </div>
-              <span class="text-[10px] font-bold text-gray-400">第 {{ idx + 1 }} 场</span>
+              <span class="text-[10px] font-bold text-gray-400">{{ t('workbench.scriptScenes.sceneNumber', { number: idx + 1 }) }}</span>
           </div>
           
           <!-- Scene Card with Image & Overlay -->
@@ -62,11 +64,11 @@ const handleFileChange = (event: Event, item: any, index: number) => {
              <!-- Image or Placeholder -->
              <img v-if="scene.image_url || scene.reference_image" :src="resolveImageUrl(scene.image_url || scene.reference_image)" class="w-full h-full object-cover" />
              <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-xs italic">
-                暂无图片
+                {{ t('workbench.scriptScenes.noImage') }}
              </div>
 
              <div v-if="scene.reference_image && !scene.image_url" class="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-semibold bg-orange-100/90 text-orange-700 border border-orange-200 rounded">
-                参考
+                {{ t('workbench.scriptScenes.reference') }}
              </div>
 
              <!-- Translucent Prompt Overlay -->
@@ -109,8 +111,8 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                     size="sm"
                     class="flex-1 text-xs"
                     @click="triggerUpload(idx)"
-                    title="参考图"
-                    aria-label="参考图"
+                    :title="t('workbench.scriptScenes.referenceImage')"
+                    :aria-label="t('workbench.scriptScenes.referenceImage')"
                   >
                      <Upload class="w-3.5 h-3.5" />
                   </NeuButton>
@@ -118,8 +120,8 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                     size="sm"
                     class="flex-1 text-xs"
                     @click="emit('generate', 'image', scene, idx)"
-                    :title="scene.image_url ? '重设' : '生成场景图'"
-                    :aria-label="scene.image_url ? '重设' : '生成场景图'"
+                    :title="scene.image_url ? t('workbench.scriptScenes.resetImage') : t('workbench.scriptScenes.generateSceneImage')"
+                    :aria-label="scene.image_url ? t('workbench.scriptScenes.resetImage') : t('workbench.scriptScenes.generateSceneImage')"
                   >
                      <ImageIcon class="w-3.5 h-3.5" />
                   </NeuButton>
@@ -135,7 +137,7 @@ const handleFileChange = (event: Event, item: any, index: number) => {
          <div class="w-10 h-10 rounded-full bg-gray-200/50 flex items-center justify-center group-hover:bg-orange-100 transition-colors">
              <Plus class="w-5 h-5" />
          </div>
-         <span class="text-xs font-bold">添加场景</span>
+         <span class="text-xs font-bold">{{ t('workbench.scriptScenes.addScene') }}</span>
       </button>
   </div>
 </template>

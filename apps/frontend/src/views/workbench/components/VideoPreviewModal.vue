@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { X, Film } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{
   visible: boolean
@@ -8,6 +9,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits(['close'])
+const { t } = useI18n()
 </script>
 
 <template>
@@ -17,7 +19,7 @@ const emit = defineEmits(['close'])
         <!-- Header -->
         <div class="px-4 py-3 bg-[#E0E5EC] border-b border-gray-200/40 flex items-center justify-between">
           <h3 class="font-bold text-gray-500 text-sm tracking-wider flex items-center gap-2 uppercase">
-            <Film class="w-4 h-4 text-blue-400" /> 视频预览
+            <Film class="w-4 h-4 text-blue-400" /> {{ t('workbench.videoPreview.title') }}
           </h3>
           <button @click="emit('close')" class="p-1.5 rounded-full neu-flat hover:text-red-500 active:neu-pressed transition-all text-gray-400">
             <X class="w-4 h-4" />
@@ -36,7 +38,7 @@ const emit = defineEmits(['close'])
           ></video>
           <div v-else class="text-white/50 flex flex-col items-center gap-2">
             <Film class="w-10 h-10 opacity-50" />
-            <span>暂无视频源</span>
+            <span>{{ t('workbench.videoPreview.noSource') }}</span>
           </div>
         </div>
       </div>

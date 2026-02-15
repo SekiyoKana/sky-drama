@@ -15,6 +15,7 @@ import CharacterCreateModal from './CharacterCreateModal.vue'
 import VideoPreviewModal from './VideoPreviewModal.vue'
 import { aiApi } from '@/api'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 import ScriptCharacters from './ScriptCharacters.vue'
 import ScriptScenes from './ScriptScenes.vue'
@@ -29,6 +30,7 @@ const emit = defineEmits(['handle-down', 'drag-start', 'generate-media', 'reques
 const message = useMessage()
 const { show: showConfirm } = useConfirm()
 const route = useRoute()
+const { t } = useI18n()
 
 const activeTab = ref<'chars' | 'scenes' | 'board'>('chars')
 const generatingItems = reactive<Record<string, number>>({}) // id -> progress (0-100) or undefined
@@ -50,17 +52,17 @@ const openVideoPreview = (url: string, poster?: string) => {
     videoPreviewVisible.value = true
 }
 
-const tabs = [
-  { id: 'chars', icon: User, label: '角色' },
-  { id: 'scenes', icon: ImageIcon, label: '场景' },
-  { id: 'board', icon: GripVertical, label: '分镜' }
-]
+const tabs = computed(() => [
+  { id: 'chars', icon: User, label: t('workbench.scriptEditor.tabs.characters') },
+  { id: 'scenes', icon: ImageIcon, label: t('workbench.scriptEditor.tabs.scenes') },
+  { id: 'board', icon: GripVertical, label: t('workbench.scriptEditor.tabs.storyboard') }
+])
 
 const standardizedData = computed(() => {
   if (!props.data) return null
   const root = props.data.generated_script || props.data
   return {
-    title: root.meta?.project_title || 'Untitled Project',
+    title: root.meta?.project_title || t('workbench.scriptEditor.defaults.untitledProject'),
     description: root.meta?.core_premise || '',
     characters: root.characters || [],
     scenes: root.scenes || [],
@@ -75,7 +77,7 @@ const showCharModal = ref(false)
 const handleAddItem = async (type: 'chars' | 'scenes' | 'board') => {
     if (!props.data) {
         const newData = {
-            meta: { project_title: 'New Project' },
+            meta: { project_title: t('workbench.scriptEditor.defaults.newProjectTitle') },
             characters: [],
             scenes: [],
             storyboard: []
@@ -105,9 +107,9 @@ const handleAddItem = async (type: 'chars' | 'scenes' | 'board') => {
         
         const newScene = {
             id: `scene_${timestamp}_${index}_${suffix}`,
-            location_name: '新场景',
-            mood: '中性',
-            visual_prompt: '请点击此处编辑场景描述...',
+            location_name: t('workbench.scriptEditor.defaults.newScene'),
+            mood: t('workbench.scriptEditor.defaults.neutralMood'),
+            visual_prompt: t('workbench.scriptEditor.defaults.newScenePrompt'),
             image_url: '',
             reference_image: ''
         }
@@ -122,9 +124,9 @@ const handleAddItem = async (type: 'chars' | 'scenes' | 'board') => {
         const newShot = {
             id: `storyboard_${uuid}`,
             shot_id: nextId,
-            action: '新分镜',
-            shot_type: '全景',
-            visual_prompt: '请点击此处编辑分镜画面...',
+            action: t('workbench.scriptEditor.defaults.newShot'),
+            shot_type: t('workbench.scriptEditor.defaults.wideShot'),
+            visual_prompt: t('workbench.scriptEditor.defaults.newShotPrompt'),
             image_url: ''
         }
         root.storyboard.push(newShot)
@@ -179,7 +181,7 @@ const handleCharConfirm = (charData: any) => {
 }
 
 const handleDeleteItem = async (type: 'chars' | 'scenes' | 'board', index: number, _item: any) => {
-    const confirmed = await showConfirm('确定要删除吗？')
+    const confirmed = await showConfirm(t('workbench.scriptEditor.messages.confirmDelete'))
     if (!confirmed) return
     
     try {
@@ -191,11 +193,11 @@ const handleDeleteItem = async (type: 'chars' | 'scenes' | 'board', index: numbe
         if (list) {
             list.splice(index, 1)
             emit('request-save')
-            message.success('已删除')
+            message.success(t('workbench.scriptEditor.messages.deleted'))
         }
     } catch (e) {
         console.error(e)
-        message.error('删除失败')
+        message.error(t('workbench.scriptEditor.messages.deleteFailed'))
     }
 }
 
@@ -222,7 +224,7 @@ const handleUpdateItem = async (itemId: string, updates: any) => {
         })
     } catch (e) {
         console.error("Update failed", e)
-        message.error("更新失败")
+        message.error(t('workbench.scriptEditor.messages.updateFailed'))
     }
 }
 
@@ -245,15 +247,18 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
 
   const category = activeTab.value === 'chars' ? 'character' : (activeTab.value === 'scenes' ? 'scene' : 'storyboard')
   if (type === 'image' && item.reference_image && (category === 'character' || category === 'scene')) {
-      const confirmed = await showConfirm('已上传参考图，将使用参考图和画风生成新的设定图，是否继续？')
+      const confirmed = await showConfirm(t('workbench.scriptEditor.messages.referenceConfirm'))
       if (!confirmed) return
   }
 
   generatingItems[itemId] = 0 // Start progress
-  message.info(`开始生成 ${type === 'image' ? '图片' : (type === 'video' ? '视频' : '提示词')}...`)
+  const typeLabel = type === 'image'
+    ? t('workbench.scriptEditor.generateTypes.image')
+    : (type === 'video' ? t('workbench.scriptEditor.generateTypes.video') : t('workbench.scriptEditor.generateTypes.prompt'))
+  message.info(t('workbench.scriptEditor.messages.startGenerating', { type: typeLabel }))
 
   // Construct prompt
-  let finalPrompt = item.visual_prompt || item.description || item.action || 'No prompt'
+  let finalPrompt = item.visual_prompt || item.description || item.action || t('workbench.scriptEditor.defaults.noPrompt')
   if (type === 'text') {
       // Prompt Refinement Logic
       const parts = []
@@ -282,7 +287,7 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
       finalPrompt = parts.join('\n\n')
   } else {
       if (extraPrompt) {
-          finalPrompt = `${finalPrompt}. 要求: ${extraPrompt}`
+          finalPrompt = `${finalPrompt}. ${t('workbench.scriptEditor.prompts.requirementPrefix')} ${extraPrompt}`
       }
   }
 
@@ -369,7 +374,7 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
                        item.visual_prompt = msg.payload
                   }
 
-                  message.success('生成成功')
+                  message.success(t('workbench.scriptEditor.messages.generateSuccess'))
                   delete generatingItems[itemId]
                   
                   if (type === 'text' && item.visual_prompt) {
@@ -388,7 +393,7 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
                   if (refinedPrompt) {
                       item.visual_prompt = refinedPrompt
                       handleUpdateItem(item.id, { visual_prompt: refinedPrompt })
-                      message.success('提示词优化完成')
+                      message.success(t('workbench.scriptEditor.messages.promptRefined'))
                   }
                   delete generatingItems[itemId]
 
@@ -407,20 +412,20 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
                       errorText = errorText.split('Execution error:')[1].trim();
                   }
                   
-                  message.error('生成出错: ' + errorText)
+                  message.error(t('workbench.scriptEditor.messages.generateError', { error: errorText }))
                   delete generatingItems[itemId]
               }
            },
            onError: (err) => {
               debugLogger.addLog('backend', `[Stream Connect Error] ${err.message}`, 'error', err.stack)
-              message.error('生成请求失败')
+              message.error(t('workbench.scriptEditor.messages.requestFailed'))
               delete generatingItems[itemId]
            }
       })
     } catch (e) {
 
       console.error(e)
-      message.error('生成失败')
+      message.error(t('workbench.scriptEditor.messages.generateFailed'))
       delete generatingItems[itemId]
   }
 }
@@ -437,10 +442,10 @@ const handleUploadReference = async (item: any, file: File, category: 'character
         if (item.id) {
             await handleUpdateItem(item.id, { reference_image: url })
         }
-        message.success('参考图已上传')
+        message.success(t('workbench.scriptEditor.messages.referenceUploaded'))
     } catch (e) {
         console.error(e)
-        message.error('上传失败')
+        message.error(t('workbench.scriptEditor.messages.uploadFailed'))
     }
 }
 
@@ -463,7 +468,7 @@ const openPreview = (items: any[], index: number) => {
     >
       <div class="px-6 flex items-center gap-2 overflow-hidden text-gray-500">
          <div class="w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"></div>
-         <h3 class="font-bold text-gray-600 text-s tracking-wider">剧本工作台</h3>
+         <h3 class="font-bold text-gray-600 text-s tracking-wider">{{ t('workbench.scriptEditor.title') }}</h3>
       </div>
     </div>
 
@@ -487,8 +492,8 @@ const openPreview = (items: any[], index: number) => {
     <div class="flex-1 overflow-y-auto custom-scroll py-4 px-8">
         <div v-if="!standardizedData" class="h-full flex flex-col items-center justify-center text-gray-400 gap-3 opacity-50">
            <Film class="w-10 h-10" />
-           <span class="text-sm">等待 AI 生成...</span>
-           <NeuButton size="sm" @click="handleAddItem('chars')">手动创建剧本</NeuButton>
+           <span class="text-sm">{{ t('workbench.scriptEditor.emptyWaiting') }}</span>
+           <NeuButton size="sm" @click="handleAddItem('chars')">{{ t('workbench.scriptEditor.manualCreate') }}</NeuButton>
         </div>
 
         <template v-else>

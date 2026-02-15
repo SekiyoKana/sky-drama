@@ -1,6 +1,7 @@
 <script setup lang="ts">
-  import { ref, onMounted } from 'vue' // 👈 引入 onMounted
+  import { ref, onMounted } from 'vue'
   import { useRouter } from 'vue-router'
+  import { useI18n } from 'vue-i18n'
   import { useAuthStore } from '@/stores/auth'
   import NeuCard from '@/components/base/NeuCard.vue'
   import NeuInput from '@/components/base/NeuInput.vue'
@@ -10,6 +11,7 @@
   
   const router = useRouter()
   const authStore = useAuthStore()
+  const { t } = useI18n()
   
   const isLogin = ref(true)
   const loading = ref(false)
@@ -40,7 +42,7 @@
   
   const handleAuth = async () => {
     if (!form.value.email || !form.value.password) {
-      errorMsg.value = '请填写完整信息'
+      errorMsg.value = t('login.fillRequired')
       return
     }
     
@@ -62,7 +64,7 @@
       router.push('/projects')
     } catch (err: any) {
       console.error(err)
-      errorMsg.value = err.response?.data?.detail || '操作失败，请检查网络或账号'
+      errorMsg.value = err.response?.data?.detail || t('login.actionFailed')
     } finally {
       loading.value = false
     }
@@ -73,9 +75,9 @@
     <div class="flex items-center justify-center min-h-screen bg-[#E0E5EC] p-4">
       <NeuCard class="w-full max-w-md" padding="p-10">
         <div class="mb-10 text-center">
-          <h1 class="text-3xl font-black tracking-wider text-gray-700">Sky Drama</h1>
+          <h1 class="text-3xl font-black tracking-wider text-gray-700">{{ t('common.appName') }}</h1>
           <p class="mt-2 text-sm text-gray-500">
-            {{ isLogin ? '欢迎回来，导演' : '创建你的第一个工作室' }}
+            {{ isLogin ? t('login.welcomeBack') : t('login.createStudio') }}
           </p>
         </div>
   
@@ -83,7 +85,7 @@
           <NeuInput 
             v-model="form.email" 
             placeholder="name@example.com" 
-            label="邮箱"
+            :label="t('login.emailLabel')"
             name="email"
             autocomplete="username" 
           />
@@ -91,7 +93,7 @@
             v-model="form.password" 
             type="password" 
             placeholder="••••••••" 
-            label="密码"
+            :label="t('login.passwordLabel')"
             name="password"
             autocomplete="current-password"
             @enter="handleAuth"
@@ -108,20 +110,20 @@
               >
                 <Check v-if="rememberMe" class="w-3.5 h-3.5 text-blue-500 stroke-[3]" />
               </div>
-              <span class="ml-3 text-sm text-gray-500 group-hover:text-gray-700 transition-colors">记住我</span>
+              <span class="ml-3 text-sm text-gray-500 group-hover:text-gray-700 transition-colors">{{ t('login.rememberMe') }}</span>
             </label>
           </div>
           
           <div v-if="errorMsg" class="text-red-500 text-sm text-center font-bold">{{ errorMsg }}</div>
           <NeuButton block variant="primary" :loading="loading" @click="handleAuth">
-            {{ isLogin ? '登 录' : '注 册' }}
+            {{ isLogin ? t('login.login') : t('login.register') }}
           </NeuButton>
         </div>
         
         <p class="mt-8 text-sm text-center text-gray-500">
-          {{ isLogin ? '还没有账号？' : '已有账号？' }}
+          {{ isLogin ? t('login.noAccount') : t('login.hasAccount') }}
           <span class="font-bold text-blue-500 cursor-pointer hover:underline" @click="isLogin = !isLogin; errorMsg = ''">
-            {{ isLogin ? '立即注册' : '直接登录' }}
+            {{ isLogin ? t('login.signUpNow') : t('login.signInNow') }}
           </span>
         </p>
 
@@ -132,7 +134,7 @@
               class="flex items-center gap-2 px-3 py-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-200/50 transition-all text-xs font-mono group"
             >
               <Github class="w-3.5 h-3.5 group-hover:text-black transition-colors" />
-              <span class="opacity-80 group-hover:opacity-100">Open Source on GitHub</span>
+              <span class="opacity-80 group-hover:opacity-100">{{ t('login.openSourceOnGithub') }}</span>
             </button>
         </div>
   

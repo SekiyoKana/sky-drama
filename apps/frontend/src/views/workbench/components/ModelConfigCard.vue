@@ -1,10 +1,11 @@
 <script setup lang="ts">
-  import { ref, watch, onMounted, onUnmounted, reactive } from 'vue'
+  import { ref, watch, onMounted, onUnmounted, reactive, computed } from 'vue'
   import { Type, Image, Video, Save, Cpu, CheckCircle2, X, Palette } from 'lucide-vue-next'
   import { apiKeyApi, aiApi, styleApi } from '@/api'
   import NeuButton from '@/components/base/NeuButton.vue'
   import NeuSelect from '@/components/base/NeuSelect.vue'
   import NeuSwitch from '@/components/base/NeuSwitch.vue'
+  import { useI18n } from 'vue-i18n'
   
   const props = defineProps<{
     initialConfig?: any
@@ -12,6 +13,7 @@
   }>()
   
   const emit = defineEmits(['close', 'save', 'handle-down'])
+  const { t } = useI18n()
   
   // --- Window State (Draggable & Resizable) ---
   const windowState = reactive({
@@ -82,16 +84,16 @@
   const modelOptions = ref<string[]>([]) 
   const availableStyles = ref<any[]>([])
   const modelCache = ref<Record<string, string[]>>({})
-  const voiceLanguageOptions = [
-    { label: '不指定', value: '' },
-    { label: '汉语', value: '汉语' },
-    { label: '英语', value: '英语' },
-    { label: '日语', value: '日语' },
-    { label: '韩语', value: '韩语' },
-    { label: '法语', value: '法语' },
-    { label: '德语', value: '德语' },
-    { label: '西语', value: '西语' }
-  ]
+  const voiceLanguageOptions = computed(() => [
+    { label: t('workbench.modelConfig.voiceLanguages.unspecified'), value: '' },
+    { label: t('workbench.modelConfig.voiceLanguages.chinese'), value: '汉语' },
+    { label: t('workbench.modelConfig.voiceLanguages.english'), value: '英语' },
+    { label: t('workbench.modelConfig.voiceLanguages.japanese'), value: '日语' },
+    { label: t('workbench.modelConfig.voiceLanguages.korean'), value: '韩语' },
+    { label: t('workbench.modelConfig.voiceLanguages.french'), value: '法语' },
+    { label: t('workbench.modelConfig.voiceLanguages.german'), value: '德语' },
+    { label: t('workbench.modelConfig.voiceLanguages.spanish'), value: '西语' }
+  ])
   
   const config = ref<any>({
     text: { key_id: '', model: '' },
@@ -101,13 +103,13 @@
     style: { id: null }
   })
   
-  const tabs = [
-    { id: 'text', label: '剧本', icon: Type, color: 'text-blue-600' },
-    { id: 'image', label: '画面', icon: Image, color: 'text-purple-600' },
-    { id: 'video', label: '视频', icon: Video, color: 'text-orange-600' },
+  const tabs = computed(() => [
+    { id: 'text', label: t('workbench.modelConfig.tabs.script'), icon: Type, color: 'text-blue-600' },
+    { id: 'image', label: t('workbench.modelConfig.tabs.image'), icon: Image, color: 'text-purple-600' },
+    { id: 'video', label: t('workbench.modelConfig.tabs.video'), icon: Video, color: 'text-orange-600' },
     // { id: 'audio', label: '声音', icon: Music, color: 'text-green-600' },
-    { id: 'style', label: '风格', icon: Palette, color: 'text-pink-600' },
-  ]
+    { id: 'style', label: t('workbench.modelConfig.tabs.style'), icon: Palette, color: 'text-pink-600' },
+  ])
   
   const fetchModels = async (keyId: string) => {
     modelOptions.value = [] 
@@ -211,7 +213,7 @@
         >
             <div class="flex items-center gap-2 text-gray-500">
                 <Cpu class="w-4 h-4 text-blue-500" />
-                <span class="font-bold font-serif text-sm tracking-wide uppercase">生成设置</span>
+                <span class="font-bold font-serif text-sm tracking-wide uppercase">{{ t('workbench.modelConfig.title') }}</span>
             </div>
             <button @click="emit('close')" class="p-1.5 rounded-full neu-flat hover:text-red-500 active:neu-pressed transition-all text-gray-400" @mousedown.stop>
                 <X class="w-3.5 h-3.5" />
@@ -238,7 +240,7 @@
           <!-- Style Tab Content -->
           <div v-if="activeTab === 'style'" class="h-full flex flex-col">
               <div class="px-5 pt-5 pb-3 shrink-0">
-                <label class="text-xs font-bold text-gray-500 uppercase">选择视觉风格</label>
+                <label class="text-xs font-bold text-gray-500 uppercase">{{ t('workbench.modelConfig.selectStyle') }}</label>
               </div>
               
               <div class="grid grid-cols-3 gap-3 overflow-y-auto px-5 pb-5 custom-scroll min-h-0 flex-1 content-start">
@@ -264,7 +266,7 @@
                     @click="config.style.id = null"
                   >
                       <X class="w-6 h-6" />
-                      <span class="text-[10px] font-bold">无风格</span>
+                      <span class="text-[10px] font-bold">{{ t('workbench.modelConfig.noStyle') }}</span>
                   </div>
               </div>
           </div>
@@ -273,51 +275,51 @@
           <div v-else class="h-full overflow-y-auto p-5 space-y-6 custom-scroll">
             <div class="space-y-2">
               <label class="text-xs font-bold text-gray-500 uppercase flex justify-between">
-                API 连接 <span v-if="loadingKeys" class="animate-pulse">加载中...</span>
+                {{ t('workbench.modelConfig.apiConnection') }} <span v-if="loadingKeys" class="animate-pulse">{{ t('workbench.modelConfig.loading') }}</span>
               </label>
               <NeuSelect 
                 v-model="config[activeTab].key_id" 
                 :options="availableKeys" 
-                placeholder="选择连接..." 
+                :placeholder="t('workbench.modelConfig.selectConnection')" 
                 size="mini"
               />
             </div>
   
             <div class="space-y-2">
               <label class="text-xs font-bold text-gray-500 uppercase flex justify-between">
-                目标模型 <span v-if="fetchingModels" class="text-blue-500 animate-pulse">获取中...</span>
+                {{ t('workbench.modelConfig.targetModel') }} <span v-if="fetchingModels" class="text-blue-500 animate-pulse">{{ t('workbench.modelConfig.fetching') }}</span>
               </label>
               <NeuSelect 
                 v-model="config[activeTab].model" 
                 :options="modelOptions" 
                 :disabled="!config[activeTab].key_id || fetchingModels"
-                placeholder="自动 / 默认"
+                :placeholder="t('workbench.modelConfig.autoDefault')"
                 size="mini"
               />
               
               <div v-if="config[activeTab].model" class="flex items-center gap-1.5 text-[10px] text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100 animate-in fade-in slide-in-from-top-1 mt-2">
-                <CheckCircle2 class="w-3 h-3" /> 就绪
+                <CheckCircle2 class="w-3 h-3" /> {{ t('workbench.modelConfig.ready') }}
               </div>
             </div>
 
             <div v-if="activeTab === 'video'" class="space-y-3">
               <div class="space-y-2 mb-6">
-                <label class="text-xs font-bold text-gray-500 uppercase">台词语言</label>
+                <label class="text-xs font-bold text-gray-500 uppercase">{{ t('workbench.modelConfig.voiceLanguage') }}</label>
                 <NeuSelect
                     v-model="config.video.voice_language"
                     :options="voiceLanguageOptions"
-                    placeholder="不指定"
+                    :placeholder="t('workbench.modelConfig.voiceLanguagePlaceholder')"
                     size="mini"
                     class="mt-2"
                   />
               </div>
 
               <div class="space-y-2">
-                <label class="text-xs font-bold text-gray-500 uppercase">视频提示</label>
+                <label class="text-xs font-bold text-gray-500 uppercase">{{ t('workbench.modelConfig.videoPrompt') }}</label>
                 <div class="neu-flat rounded-xl p-3 flex flex-col gap-3 border border-white/40 mt-2">
-                  <NeuSwitch v-model="config.video.remove_bgm" label="去除背景音乐" />
-                  <NeuSwitch v-model="config.video.keep_voice" label="保留人物声音" />
-                  <NeuSwitch v-model="config.video.keep_sfx" label="保留人物音效" />
+                  <NeuSwitch v-model="config.video.remove_bgm" :label="t('workbench.modelConfig.removeBgm')" />
+                  <NeuSwitch v-model="config.video.keep_voice" :label="t('workbench.modelConfig.keepVoice')" />
+                  <NeuSwitch v-model="config.video.keep_sfx" :label="t('workbench.modelConfig.keepSfx')" />
                 </div>
               </div>
             </div>
@@ -327,7 +329,7 @@
         <!-- Footer -->
         <div class="p-4 border-t border-gray-200/40 bg-[#E0E5EC] flex justify-end relative shrink-0">
           <NeuButton size="xs" variant="primary" @click="handleSave" class="text-xs px-3 py-1.5">
-            <Save class="w-3 h-3 mr-1.5" /> 保存
+            <Save class="w-3 h-3 mr-1.5" /> {{ t('common.save') }}
           </NeuButton>
           
           <div 

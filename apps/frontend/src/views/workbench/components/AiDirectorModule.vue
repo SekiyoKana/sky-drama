@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, reactive, onUnmounted } from 'vue'
+import { ref, reactive, onUnmounted, computed } from 'vue'
 import { 
   Wand2, Sparkles, Loader2,
   FileText, X, Scissors
 } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{ 
   visible: boolean
@@ -14,13 +15,14 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'generate', 'stop', 'handle-down'])
 const promptText = ref('')
 const moduleRef = ref<HTMLElement | null>(null)
+const { t } = useI18n()
 
 // Tabs
 const activeTab = ref<'script' | 'split'>('script')
-const tabs = [
-  { id: 'script', label: '剧本', icon: FileText },
-  { id: 'split', label: '分镜拆分', icon: Scissors },
-]
+const tabs = computed(() => [
+  { id: 'script', label: t('workbench.aiDirector.tabs.script'), icon: FileText },
+  { id: 'split', label: t('workbench.aiDirector.tabs.split'), icon: Scissors },
+])
 
 // --- Window State ---
 const windowState = reactive({
@@ -115,7 +117,7 @@ const handleGenerate = () => {
       >
         <div class="flex items-center gap-2 overflow-hidden text-gray-500">
            <Sparkles class="w-4 h-4 text-purple-500" />
-           <h3 class="font-bold text-gray-600 text-xs tracking-wider uppercase">AI 导演</h3>
+           <h3 class="font-bold text-gray-600 text-xs tracking-wider uppercase">{{ t('workbench.aiDirector.title') }}</h3>
         </div>
         <button 
           @click="emit('close')" 
@@ -147,7 +149,7 @@ const handleGenerate = () => {
                 <textarea 
                   v-model="promptText" 
                   class="w-full h-full bg-transparent outline-none resize-none text-sm text-gray-600 placeholder-gray-400 leading-relaxed custom-scroll" 
-                  placeholder="输入你的指令..."
+                  :placeholder="t('workbench.aiDirector.promptPlaceholder')"
                 ></textarea>
               </div>
               
@@ -160,11 +162,11 @@ const handleGenerate = () => {
               >
                 <template v-if="loading">
                   <Loader2 class="w-4 h-4 animate-spin" />
-                  <span class="text-xs font-bold">停止生成</span>
+                  <span class="text-xs font-bold">{{ t('workbench.aiDirector.stop') }}</span>
                 </template>
                 <template v-else>
                   <Wand2 class="w-4 h-4" />
-                  <span class="text-xs font-bold">发送指令</span>
+                  <span class="text-xs font-bold">{{ t('workbench.aiDirector.send') }}</span>
                 </template>
               </NeuButton>
           </div>

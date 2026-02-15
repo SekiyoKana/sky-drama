@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { Trash2, Maximize2, Image as ImageIcon, Plus, Upload } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
 import { resolveImageUrl } from '@/utils/assets'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{
   characters: any[]
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   (e: 'generate', type: 'image', item: any, index: number): void
   (e: 'upload-reference', item: any, index: number, file: File): void
 }>()
+const { t } = useI18n()
 
 const uploadInputs = ref<(HTMLInputElement | null)[]>([])
 
@@ -69,7 +71,7 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                   {{ char.role }}
               </span>
               <span v-if="char.reference_image && !char.image_url" class="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100/80 text-blue-600 font-medium border border-blue-200 shrink-0 text-center max-w-[60px] truncate">
-                  参考
+                  {{ t('workbench.scriptCharacters.reference') }}
               </span>
           </div>
 
@@ -112,8 +114,8 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                 size="sm"
                 class="flex-1 text-xs"
                 @click="triggerUpload(idx)"
-                title="参考图"
-                aria-label="参考图"
+                :title="t('workbench.scriptCharacters.referenceImage')"
+                :aria-label="t('workbench.scriptCharacters.referenceImage')"
               >
                   <Upload class="w-3.5 h-3.5" />
               </NeuButton>
@@ -121,8 +123,8 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                 size="sm"
                 class="flex-1 text-xs"
                 @click="emit('generate', 'image', char, idx)"
-                :title="char.image_url ? '重设' : '生成立绘'"
-                :aria-label="char.image_url ? '重设' : '生成立绘'"
+                :title="char.image_url ? t('workbench.scriptCharacters.resetImage') : t('workbench.scriptCharacters.generatePortrait')"
+                :aria-label="char.image_url ? t('workbench.scriptCharacters.resetImage') : t('workbench.scriptCharacters.generatePortrait')"
               >
                   <ImageIcon class="w-3.5 h-3.5" />
               </NeuButton>
@@ -138,7 +140,7 @@ const handleFileChange = (event: Event, item: any, index: number) => {
        <div class="w-10 h-10 rounded-full bg-gray-200/50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
            <Plus class="w-5 h-5" />
        </div>
-       <span class="text-xs font-bold">添加角色</span>
+       <span class="text-xs font-bold">{{ t('workbench.scriptCharacters.addCharacter') }}</span>
     </button>
   </div>
 </template>

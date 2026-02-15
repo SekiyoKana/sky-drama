@@ -1,6 +1,7 @@
 <script setup lang="ts">
-  import { ref, onMounted } from 'vue'
-  import { useRouter, useRoute } from 'vue-router' // 引入 useRoute
+  import { ref, onMounted, computed } from 'vue'
+  import { useRouter, useRoute } from 'vue-router'
+  import { useI18n } from 'vue-i18n'
   import { BookOpen, Key, Lock, Palette, FileText } from 'lucide-vue-next'
   import NeuMessage from '@/components/base/NeuMessage.vue'
   import NeuConfirm from '@/components/base/NeuConfirm.vue'
@@ -21,6 +22,7 @@ import helloImg from '@/assets/hello.png'
 
   const router = useRouter()
   const route = useRoute()
+  const { t } = useI18n()
   
   const isFlipped = ref(false)
   const isFlipComplete = ref(false)
@@ -51,13 +53,13 @@ import helloImg from '@/assets/hello.png'
       previewVisible.value = true
   }
 
-  const bookmarks = [
-    { id: 'projects', label: '工作台', icon: BookOpen, color: 'bg-blue-500', component: WorkbenchTab },
-    { id: 'styles', label: '风格模板', icon: Palette, color: 'bg-teal-500', component: StylesTab },
-    { id: 'api', label: 'API 设置', icon: Key, color: 'bg-orange-500', component: ApiMatrixTab },
+  const bookmarks = computed(() => [
+    { id: 'projects', label: t('projects.tabs.projects'), icon: BookOpen, color: 'bg-blue-500', component: WorkbenchTab },
+    { id: 'styles', label: t('projects.tabs.styles'), icon: Palette, color: 'bg-teal-500', component: StylesTab },
+    { id: 'api', label: t('projects.tabs.api'), icon: Key, color: 'bg-orange-500', component: ApiMatrixTab },
     // { id: 'prompts', label: '指令工坊', icon: Sparkles, color: 'bg-purple-500', component: PromptsTab },
-    { id: 'password', label: '安全中心', icon: Lock, color: 'bg-red-500', component: SecurityTab },
-  ]
+    { id: 'password', label: t('projects.tabs.password'), icon: Lock, color: 'bg-red-500', component: SecurityTab },
+  ])
   
   // --- 路由与状态同步逻辑 ---
   
@@ -146,31 +148,31 @@ import helloImg from '@/assets/hello.png'
             element: '#tour-bookmarks-projects', 
             theme: 'blue',
             image: logoImg,
-            popover: { title: '工作台', description: '这里是你的所有剧本和项目，点击即可进入创作。', side: 'left' } 
+            popover: { title: t('projects.tour.workbenchTitle'), description: t('projects.tour.workbenchDesc'), side: 'left' } 
         },
         { 
             element: '#tour-bookmarks-styles', 
             theme: 'green',
             image: defaultImg,
-            popover: { title: '风格模板', description: '配置和管理你的 AI 绘图风格。', side: 'left' } 
+            popover: { title: t('projects.tour.stylesTitle'), description: t('projects.tour.stylesDesc'), side: 'left' } 
         },
         { 
             element: '#tour-bookmarks-api', 
             theme: 'yellow',
             image: loginImg,
-            popover: { title: 'API 设置', description: '管理你的 API Key，连接各种大模型服务。', side: 'left' } 
+            popover: { title: t('projects.tour.apiTitle'), description: t('projects.tour.apiDesc'), side: 'left' } 
         },
         { 
             element: '#tour-bookmarks-password', 
             theme: 'pink',
             image: helloImg,
-            popover: { title: '安全中心', description: '修改密码和账户安全设置。', side: 'left' } 
+            popover: { title: t('projects.tour.securityTitle'), description: t('projects.tour.securityDesc'), side: 'left' } 
         },
         { 
             element: '#tour-project-list-area', 
             theme: 'yellow',
             image: helloImg,
-            popover: { title: '项目列表', description: '点击这里可以新建项目，或者查看已有的项目。<br>支持网格视图和列表视图切换。', side: 'right' } 
+            popover: { title: t('projects.tour.listTitle'), description: t('projects.tour.listDesc'), side: 'right' } 
         }
     ])
   })
@@ -203,7 +205,7 @@ import helloImg from '@/assets/hello.png'
               <div class="flex-1 relative z-10 h-full" id="tour-project-list-area">
                 <transition name="fade" mode="out-in">
                   <component 
-                    :is="bookmarks.find(b => b.id === currentTab)?.component" 
+                    :is="bookmarks.find((b: any) => b.id === currentTab)?.component" 
                     @open-project="handleOpenProject"
                     @open-archive="handleOpenArchive"
                   />
@@ -218,7 +220,7 @@ import helloImg from '@/assets/hello.png'
             >
                <div class="transform scale-x-[-1] opacity-20">
                   <FileText class="w-32 h-32 mb-4" />
-                  <h2 class="text-2xl font-serif font-bold">Script Archive</h2>
+                  <h2 class="text-2xl font-serif font-bold">{{ t('projects.archiveTitle') }}</h2>
                </div>
             </div>
           </div>

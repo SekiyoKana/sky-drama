@@ -1,5 +1,6 @@
 <script setup lang="ts">
     import { ref, onMounted } from 'vue'
+    import { useI18n } from 'vue-i18n'
     import { Plus, FileText, Trash2, Archive } from 'lucide-vue-next'
     import { projectApi } from '@/api'
     import CreateProjectModal from '../components/CreateProjectModal.vue'
@@ -11,6 +12,7 @@
     const emit = defineEmits(['open-project', 'open-archive']) // 通知父组件翻页
     const confirm = useConfirm()
     const message = useMessage()
+    const { t } = useI18n()
     
     const projects = ref<any[]>([])
     const loading = ref(false)
@@ -33,12 +35,12 @@
                 element: '#tour-project-create-card', 
                 theme: 'blue',
                 image: helloImg,
-                popover: { title: '创建新剧本', description: '点击这里开始一个新的创作项目。', side: 'left' } 
+                popover: { title: t('projects.workbench.tour.createTitle'), description: t('projects.workbench.tour.createDesc'), side: 'left' } 
             },
             { 
                 element: '#tour-project-list', 
                 theme: 'yellow',
-                popover: { title: '我的剧本', description: '点击剧本封面进入创作，或者使用下方的按钮进行归档和删除。', side: 'top' } 
+                popover: { title: t('projects.workbench.tour.listTitle'), description: t('projects.workbench.tour.listDesc'), side: 'top' } 
             }
         ])
     })
@@ -48,7 +50,7 @@
         await projectApi.create(data)
         showCreateModal.value = false
         fetchProjects()
-      } catch (e) { message.error('创建失败') }
+      } catch (e) { message.error(t('projects.workbench.messages.createFailed')) }
     }
     
     const handleCardClick = (p: any) => {
@@ -56,14 +58,17 @@
     }
 
     const handleDelete = async (p: any) => {
-      const confirmed = await confirm.show(`确认要删除剧本 "${p.name}" 吗？此操作无法撤销。`, '删除确认')
+      const confirmed = await confirm.show(
+        t('projects.workbench.messages.deleteConfirmText', { name: p.name }),
+        t('projects.workbench.messages.deleteConfirmTitle')
+      )
       if (!confirmed) return
       
       try {
         await projectApi.delete(p.id)
         fetchProjects()
       } catch (e) {
-        message.error('删除失败')
+        message.error(t('projects.workbench.messages.deleteFailed'))
       }
     }
 
@@ -78,8 +83,8 @@
       <div class="h-full flex flex-col p-10">
         <div class="flex items-center justify-between mb-8 shrink-0">
           <div>
-            <h1 class="text-3xl font-black text-gray-800 font-serif">剧本</h1>
-            <p class="text-gray-500 font-serif italic">选择一个剧本以继续...</p>
+            <h1 class="text-3xl font-black text-gray-800 font-serif">{{ t('projects.workbench.title') }}</h1>
+            <p class="text-gray-500 font-serif italic">{{ t('projects.workbench.subtitle') }}</p>
           </div>
           <!-- <div class="neu-flat px-4 py-2 rounded-full flex items-center gap-2 bg-[#f3f4f6]">
             <Search class="w-4 h-4 text-gray-400" />
@@ -88,7 +93,7 @@
         </div>
     
         <div class="flex-1 overflow-y-auto custom-scroll p-6 -mx-6" id="tour-project-list">
-          <div v-if="loading" class="text-center text-gray-400 mt-20">正在加载剧本...</div>
+          <div v-if="loading" class="text-center text-gray-400 mt-20">{{ t('projects.workbench.loading') }}</div>
           
           <div v-else class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8 pb-10">
             <div 
@@ -111,14 +116,14 @@
                     <button 
                         @click="handleArchive(p)"
                         class="p-1.5 rounded-full hover:bg-gray-200 text-gray-400 hover:text-blue-500 transition-colors"
-                        title="查看设定集"
+                        :title="t('projects.workbench.archive')"
                     >
                         <Archive class="w-4 h-4" />
                     </button>
                     <button 
                         @click="handleDelete(p)"
                         class="p-1.5 rounded-full hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                        title="删除剧本"
+                        :title="t('projects.workbench.delete')"
                     >
                         <Trash2 class="w-4 h-4" />
                     </button>
@@ -134,7 +139,7 @@
               <div class="w-12 h-12 rounded-full bg-gray-200 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
                 <Plus class="w-6 h-6 text-gray-400 group-hover:text-blue-500" />
               </div>
-              <span class="text-sm font-bold text-gray-400 group-hover:text-blue-500">新剧本</span>
+              <span class="text-sm font-bold text-gray-400 group-hover:text-blue-500">{{ t('projects.workbench.newProject') }}</span>
             </div>
           </div>
         </div>

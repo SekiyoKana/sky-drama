@@ -1,14 +1,15 @@
 import { reactive } from 'vue'
+import { i18n } from '@/i18n'
 
 const state = reactive({
   visible: false,
-  title: '确认',
+  title: '',
   message: '',
   resolve: null as ((value: boolean) => void) | null
 })
 
 export const useConfirm = () => {
-  const show = (message: string, title = '确认操作') => {
+  const show = (message: string, title = String(i18n.global.t('confirm.defaultTitle'))) => {
     state.message = message
     state.title = title
     state.visible = true

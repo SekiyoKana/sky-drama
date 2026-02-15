@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { X, User, MapPin } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -8,6 +9,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(['close', 'open-preview'])
+const { t } = useI18n()
 
 const characters = computed(() => props.project?.assets?.characters || [])
 const scenes = computed(() => props.project?.assets?.scenes || [])
@@ -95,7 +97,7 @@ const getCardStyle = (index: number, total: number) => {
                             <h2
                                 class="text-2xl font-serif font-black text-gray-800 tracking-tight flex items-center gap-3">
                                 <User class="w-8 h-8 text-blue-500" />
-                                角色
+                                {{ t('projects.archive.characters') }}
                             </h2>
                             <!-- <div class="w-24 h-1 bg-blue-500/30 mt-2 rounded-full"></div> -->
                         </div>
@@ -103,7 +105,7 @@ const getCardStyle = (index: number, total: number) => {
                         <!-- Stacking Area -->
                         <div class="flex-1 relative w-full flex items-center justify-center perspective-area paper-lines">
                             <div v-if="characters.length === 0" class="text-gray-400 font-serif italic text-xl">
-                                暂无角色记录
+                                {{ t('projects.archive.noCharacters') }}
                             </div>
 
                             <div v-for="(char, idx) in characters" :key="char.id"
@@ -153,7 +155,7 @@ const getCardStyle = (index: number, total: number) => {
                             <h2
                                 class="text-2xl font-serif font-black text-gray-800 tracking-tight flex items-center gap-3">
                                 <MapPin class="w-8 h-8 text-orange-500" />
-                                场景
+                                {{ t('projects.archive.scenes') }}
                             </h2>
                             <div class="w-24 h-1 bg-orange-500/30 mt-2 rounded-full"></div>
                         </div>
@@ -161,7 +163,7 @@ const getCardStyle = (index: number, total: number) => {
                         <!-- Stacking Area -->
                         <div class="flex-1 relative w-full flex items-center justify-center perspective-area paper-lines">
                             <div v-if="scenes.length === 0" class="text-gray-400 font-serif italic text-xl">
-                                暂无场景记录
+                                {{ t('projects.archive.noScenes') }}
                             </div>
                             <div v-for="(scene, idx) in scenes" :key="scene.id"
                                 class="polaroid absolute transition-all duration-300 ease-out cursor-pointer group hover:z-1000!"

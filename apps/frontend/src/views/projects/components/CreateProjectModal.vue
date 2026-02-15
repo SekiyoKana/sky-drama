@@ -1,9 +1,11 @@
 <script setup lang="ts">
     import { ref } from 'vue'
+    import { useI18n } from 'vue-i18n'
     import { X, PenTool, Check } from 'lucide-vue-next'
     
     const props = defineProps<{ visible: boolean }>()
     const emit = defineEmits(['close', 'confirm'])
+    const { t } = useI18n()
     
     const form = ref({ name: '', description: '' })
     const loading = ref(false)
@@ -32,7 +34,7 @@
             </button>
     
             <h3 class="text-xl font-serif font-black text-gray-800 mb-6 text-center border-b-2 border-gray-800 pb-2">
-              创建新剧本
+              {{ t('projects.createModal.title') }}
             </h3>
     
             <div class="space-y-6">
@@ -40,7 +42,7 @@
                 <input 
                   v-model="form.name" 
                   type="text" 
-                  placeholder="剧本标题..." 
+                  :placeholder="t('projects.createModal.namePlaceholder')" 
                   class="w-full bg-transparent border-b border-gray-300 focus:border-blue-500 outline-none py-2 text-lg font-serif placeholder-gray-400 transition-colors"
                   autofocus
                 />
@@ -51,7 +53,7 @@
                 <textarea 
                   v-model="form.description" 
                   rows="3" 
-                  placeholder="简短的故事梗概 (可选)..." 
+                  :placeholder="t('projects.createModal.descriptionPlaceholder')" 
                   class="w-full bg-[#f3f4f6] rounded-lg p-3 text-sm outline-none resize-none border border-transparent focus:border-gray-300 focus:bg-white transition-all"
                 ></textarea>
               </div>
@@ -61,8 +63,8 @@
                 :disabled="loading || !form.name"
                 class="w-full py-3 bg-gray-800 text-white font-bold tracking-widest hover:bg-black transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg active:scale-95 transform duration-150"
               >
-                <span v-if="loading">Signing...</span>
-                <span v-else class="flex items-center gap-2"><Check class="w-4 h-4" /> CREATE</span>
+                <span v-if="loading">{{ t('projects.createModal.creating') }}</span>
+                <span v-else class="flex items-center gap-2"><Check class="w-4 h-4" /> {{ t('projects.createModal.create') }}</span>
               </button>
             </div>
           </div>

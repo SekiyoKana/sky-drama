@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { Monitor, Smartphone, Play, Pause, Film, SkipForward, SkipBack } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   timeline?: any[]
 }>()
 
 const emit = defineEmits(['drop', 'update-item', 'time-update', 'duration-update', 'play-state-change'])
+const { t } = useI18n()
 
 const isPlaying = ref(false)
 const aspectRatio = ref<'16:9' | '9:16'>('16:9')
@@ -182,14 +184,14 @@ watch(playlist, (newVal) => {
       <div class="h-10 mb-2 flex items-center justify-between px-4 border-b border-transparent select-none">
          <div class="flex items-center gap-2">
             <Film class="w-4 h-4 text-gray-400" />
-            <span class="font-bold text-gray-600 text-s tracking-wider">预览窗口</span>
+            <span class="font-bold text-gray-600 text-s tracking-wider">{{ t('workbench.previewModule.title') }}</span>
          </div>
          <div class="flex bg-[#E0E5EC] rounded-lg neu-pressed-sm p-1">
                <button 
                 @click="aspectRatio = '16:9'" 
                 class="p-1.5 rounded-md transition-all" 
                 :class="aspectRatio === '16:9' ? 'neu-flat-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
-                title="16:9 横屏"
+                :title="t('workbench.previewModule.ratioLandscape')"
                >
                 <Monitor class="w-4 h-4" />
                </button>
@@ -197,7 +199,7 @@ watch(playlist, (newVal) => {
                 @click="aspectRatio = '9:16'" 
                 class="p-1.5 rounded-md transition-all" 
                 :class="aspectRatio === '9:16' ? 'neu-flat-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
-                title="9:16 竖屏"
+                :title="t('workbench.previewModule.ratioPortrait')"
                >
                 <Smartphone class="w-4 h-4" />
                </button>
@@ -220,7 +222,7 @@ watch(playlist, (newVal) => {
             @play="isPlaying = true; emit('play-state-change', true); applyGlobalSettings()"
             @pause="isPlaying = false; emit('play-state-change', false)"
           ></video>
-          <p v-else class="text-gray-600 font-mono text-sm">暂无信号</p>
+          <p v-else class="text-gray-600 font-mono text-sm">{{ t('workbench.previewModule.noSignal') }}</p>
           
           <!-- Controls Overlay -->
           <div v-if="currentClip" class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
@@ -237,7 +239,7 @@ watch(playlist, (newVal) => {
           
           <!-- Clip Info -->
           <div v-if="currentClip" class="absolute top-4 left-4 bg-black/50 px-2 py-1 rounded text-xs text-white/80 font-mono">
-              Clip: {{ currentIndex + 1 }} / {{ playlist.length }}
+              {{ t('workbench.previewModule.clipLabel', { current: currentIndex + 1, total: playlist.length }) }}
           </div>
         </div>
       </div>

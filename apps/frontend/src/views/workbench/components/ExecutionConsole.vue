@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch, nextTick, onUnmounted, computed } from 'vue'
 import { X, Terminal, Clock, CheckCircle2, AlertCircle, ChevronRight, ChevronDown, Activity, ListTodo, FileJson, Layers, User, Image, Film, MapPin, Sparkles, Loader2 } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   visible: boolean
@@ -10,6 +11,7 @@ const props = defineProps<{
 const emit = defineEmits(['close'])
 const logContainer = ref<HTMLElement | null>(null)
 const consoleRef = ref<HTMLElement | null>(null)
+const { t } = useI18n()
 
 // --- Log Processing Logic ---
 const processedLogs = computed(() => {
@@ -130,13 +132,13 @@ const getBlockColor = (tag: string) => {
 
 const getBlockTitle = (tag: string) => {
     switch(tag) {
-        case 'META': return '项目元数据'
-        case 'OUTLINE': return '剧本大纲'
-        case 'CHARACTERS': return '角色列表'
-        case 'SCENES': return '场景列表'
-        case 'STORYBOARD': return '分镜脚本'
-        case 'PROMPT_REFINEMENT': return '提示词优化'
-        case 'STORYBOARD_ARRAY': return 'AI 分镜生成结果' // New Title
+        case 'META': return t('workbench.executionConsole.blockTitles.meta')
+        case 'OUTLINE': return t('workbench.executionConsole.blockTitles.outline')
+        case 'CHARACTERS': return t('workbench.executionConsole.blockTitles.characters')
+        case 'SCENES': return t('workbench.executionConsole.blockTitles.scenes')
+        case 'STORYBOARD': return t('workbench.executionConsole.blockTitles.storyboard')
+        case 'PROMPT_REFINEMENT': return t('workbench.executionConsole.blockTitles.promptRefinement')
+        case 'STORYBOARD_ARRAY': return t('workbench.executionConsole.blockTitles.storyboardArray')
         default: return tag
     }
 }
@@ -144,9 +146,9 @@ const getBlockTitle = (tag: string) => {
 // Translation helpers
 const getOutlineLabel = (key: string) => {
     const map: Record<string, string> = {
-        'setup': '铺垫',
-        'confrontation': '冲突',
-        'resolution': '结局'
+        'setup': t('workbench.executionConsole.outline.setup'),
+        'confrontation': t('workbench.executionConsole.outline.confrontation'),
+        'resolution': t('workbench.executionConsole.outline.resolution')
     }
     return map[key.toLowerCase()] || key
 }
@@ -261,7 +263,7 @@ onUnmounted(() => {
       >
         <div class="flex items-center gap-2 pointer-events-none text-gray-500">
           <Activity class="w-4 h-4 text-blue-500" />
-          <span class="font-bold tracking-wide">AI 导演控制台</span>
+          <span class="font-bold tracking-wide">{{ t('workbench.executionConsole.title') }}</span>
         </div>
         <button 
           @click="emit('close')" 
@@ -280,7 +282,7 @@ onUnmounted(() => {
           >
             <div v-if="processedLogs.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400 gap-2 opacity-60">
               <Terminal class="w-8 h-8" />
-              <span class="italic">等待指令...</span>
+              <span class="italic">{{ t('workbench.executionConsole.waiting') }}</span>
             </div>
 
             <div v-for="(log, idx) in processedLogs" :key="idx" class="animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -297,7 +299,7 @@ onUnmounted(() => {
               <div v-if="log.type === 'loading_block'" class="flex flex-col gap-2 p-3 rounded-lg border border-dashed border-gray-300 bg-gray-50/50">
                  <div class="flex items-center gap-3 animate-pulse">
                     <Loader2 class="w-4 h-4 animate-spin text-gray-400" />
-                    <span class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">生成中: {{ getBlockTitle(log.tag) }}...</span>
+                    <span class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">{{ t('workbench.executionConsole.generating', { title: getBlockTitle(log.tag) }) }}</span>
                  </div>
                  
                  <!-- Render Partial Content as Cards if available -->
@@ -330,11 +332,11 @@ onUnmounted(() => {
                     <div v-if="['META'].includes(log.tag)">
                         <div v-if="parseBlockData(log.content)?.meta" class="space-y-2">
                             <div class="bg-white p-2 rounded-lg border border-orange-100 shadow-sm flex flex-col gap-1">
-                                <div class="text-[10px] font-bold text-orange-400 uppercase tracking-wider">项目标题</div>
+                                <div class="text-[10px] font-bold text-orange-400 uppercase tracking-wider">{{ t('workbench.executionConsole.meta.projectTitle') }}</div>
                                 <div class="text-sm font-bold text-gray-700">{{ parseBlockData(log.content).meta.project_title }}</div>
                             </div>
                             <div class="bg-white p-2 rounded-lg border border-orange-100 shadow-sm flex flex-col gap-1">
-                                <div class="text-[10px] font-bold text-orange-400 uppercase tracking-wider">核心梗概</div>
+                                <div class="text-[10px] font-bold text-orange-400 uppercase tracking-wider">{{ t('workbench.executionConsole.meta.corePremise') }}</div>
                                 <div class="text-xs text-gray-600 leading-relaxed">{{ parseBlockData(log.content).meta.core_premise }}</div>
                             </div>
                         </div>
@@ -448,7 +450,7 @@ onUnmounted(() => {
                         <div v-if="Array.isArray(log.content)">
                             <div v-for="(segment, idx) in log.content" :key="idx" class="bg-white p-3 rounded-lg border border-pink-100 shadow-sm flex flex-col gap-2">
                                 <div class="flex items-center justify-between border-b border-pink-50 pb-2 mb-1">
-                                    <span class="text-[10px] font-bold text-pink-500 bg-pink-50 px-2 py-0.5 rounded-full">片段 {{ idx as number + 1 }}</span>
+                                    <span class="text-[10px] font-bold text-pink-500 bg-pink-50 px-2 py-0.5 rounded-full">{{ t('workbench.executionConsole.segment', { number: (idx as number) + 1 }) }}</span>
                                     <span class="text-[9px] text-gray-400">~15s</span>
                                 </div>
                                 <div class="text-xs text-gray-600 font-mono whitespace-pre-wrap leading-relaxed bg-gray-50/50 p-2 rounded">
@@ -470,8 +472,8 @@ onUnmounted(() => {
                 >
                   <div class="flex items-center gap-2 overflow-hidden">
                     <span class="text-purple-600 font-bold truncate">{{ log.name }}</span>
-                    <span v-if="log.status === 'running'" class="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded animate-pulse font-bold">运行中</span>
-                    <span v-else-if="log.status === 'error'" class="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">失败</span>
+                    <span v-if="log.status === 'running'" class="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded animate-pulse font-bold">{{ t('workbench.executionConsole.running') }}</span>
+                    <span v-else-if="log.status === 'error'" class="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">{{ t('workbench.executionConsole.failed') }}</span>
                     <span v-else class="text-[9px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded flex items-center gap-1 font-bold">
                       <Clock class="w-3 h-3" /> {{ log.duration || 0 }}s
                     </span>
@@ -479,11 +481,11 @@ onUnmounted(() => {
                 </div>
                 <div v-if="expandedItems.has(idx)" class="border-t border-gray-200 p-3 bg-white/40 space-y-2">
                   <div>
-                    <span class="text-gray-400 block mb-1 text-[9px] uppercase font-bold">输入参数</span>
+                    <span class="text-gray-400 block mb-1 text-[9px] uppercase font-bold">{{ t('workbench.executionConsole.input') }}</span>
                     <pre class="text-green-700 bg-green-50/50 p-2 rounded border border-green-100 overflow-x-auto custom-scroll">{{ JSON.stringify(log.input, null, 2) }}</pre>
                   </div>
                   <div v-if="log.output">
-                    <span class="text-gray-400 block mb-1 text-[9px] uppercase font-bold">输出结果</span>
+                    <span class="text-gray-400 block mb-1 text-[9px] uppercase font-bold">{{ t('workbench.executionConsole.output') }}</span>
                     <pre class="text-gray-600 bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto custom-scroll max-h-[200px]">{{ log.output }}</pre>
                   </div>
                 </div>
@@ -497,7 +499,7 @@ onUnmounted(() => {
               
               <div v-if="log.type === 'finish'" class="flex items-center gap-2 text-green-600 bg-green-50 border border-green-100 p-2 rounded-lg justify-center font-bold mt-2 shadow-sm">
                  <CheckCircle2 class="w-4 h-4" />
-                 <span>全部任务完成</span>
+                 <span>{{ t('workbench.executionConsole.allTasksCompleted') }}</span>
               </div>
 
               <div v-if="log.type === 'error'" class="flex items-center gap-2 text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg shadow-sm">

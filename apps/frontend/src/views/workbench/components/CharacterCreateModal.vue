@@ -3,16 +3,18 @@ import { reactive, watch } from 'vue'
 import { X, Sparkles } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
 import NeuInput from '@/components/base/NeuInput.vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   visible: boolean
 }>()
 
 const emit = defineEmits(['close', 'confirm'])
+const { t } = useI18n()
 
 const form = reactive({
   name: '',
-  role: '主角',
+  role: t('workbench.characterModal.defaults.mainRole'),
   description: ''
 })
 
@@ -20,7 +22,7 @@ const form = reactive({
 watch(() => props.visible, (val) => {
   if (val) {
     form.name = ''
-    form.role = '主角'
+    form.role = t('workbench.characterModal.defaults.mainRole')
     form.description = ''
   }
 })
@@ -50,7 +52,7 @@ const handleClose = () => {
           <div class="flex items-center justify-between pl-2 relative z-10">
             <div class="flex items-center gap-2">
                 <Sparkles class="w-5 h-5 text-blue-500 animate-pulse" />
-                <h3 class="text-lg font-bold text-gray-700 tracking-wide">添加角色</h3>
+                <h3 class="text-lg font-bold text-gray-700 tracking-wide">{{ t('workbench.characterModal.title') }}</h3>
             </div>
             <button @click="handleClose" class="p-2 rounded-full neu-flat hover:text-red-500 transition-all hover:scale-110 active:scale-95">
               <X class="w-5 h-5" />
@@ -59,25 +61,25 @@ const handleClose = () => {
 
           <!-- Form -->
           <div class="flex flex-col gap-4 relative z-10">
-            <NeuInput v-model="form.name" label="角色名称" placeholder="例如：韩立" />
-            <NeuInput v-model="form.role" label="角色标签" placeholder="例如：主角" />
+            <NeuInput v-model="form.name" :label="t('workbench.characterModal.nameLabel')" :placeholder="t('workbench.characterModal.namePlaceholder')" />
+            <NeuInput v-model="form.role" :label="t('workbench.characterModal.roleLabel')" :placeholder="t('workbench.characterModal.rolePlaceholder')" />
             
             <!-- Textarea for Description -->
             <div class="flex flex-col gap-2 group">
-              <label class="ml-2 text-sm font-bold text-gray-500 uppercase tracking-wide group-focus-within:text-blue-500 transition-colors">角色描述</label>
+              <label class="ml-2 text-sm font-bold text-gray-500 uppercase tracking-wide group-focus-within:text-blue-500 transition-colors">{{ t('workbench.characterModal.descriptionLabel') }}</label>
               <textarea 
                 v-model="form.description"
                 rows="4"
                 class="w-full px-5 py-3 rounded-2xl outline-none transition-all duration-300 neu-pressed bg-transparent text-gray-700 placeholder-gray-400 resize-none focus:ring-2 focus:ring-blue-200/50"
-                placeholder="外貌描写、性格特征、服装风格..."
+                :placeholder="t('workbench.characterModal.descriptionPlaceholder')"
               ></textarea>
             </div>
           </div>
 
           <!-- Actions -->
           <div class="flex gap-4 mt-2 relative z-10">
-            <NeuButton class="flex-1" @click="handleClose">取消</NeuButton>
-            <NeuButton class="flex-1" variant="primary" @click="handleConfirm">确认添加</NeuButton>
+            <NeuButton class="flex-1" @click="handleClose">{{ t('common.cancel') }}</NeuButton>
+            <NeuButton class="flex-1" variant="primary" @click="handleConfirm">{{ t('workbench.characterModal.confirmAdd') }}</NeuButton>
           </div>
 
         </div>

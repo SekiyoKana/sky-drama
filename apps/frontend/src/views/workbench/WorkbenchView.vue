@@ -2,12 +2,14 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft, Download, RotateCcw, Settings2, Loader2, TerminalSquare, Sparkles, Film, ChevronDown, Package, X, FileText
+  ArrowLeft, Download, RotateCcw, Settings2, Loader2, TerminalSquare, Sparkles, Film, ChevronDown, Package, X, FileText, Languages
 } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import NeuButton from '@/components/base/NeuButton.vue'
 import NeuConfirm from '@/components/base/NeuConfirm.vue'
+import LanguageSwitcher from '@/components/base/LanguageSwitcher.vue'
 import { projectApi, episodeApi, aiApi } from '@/api'
 import { useMessage } from '@/utils/useMessage'
 import { useConfirm } from '@/utils/useConfirm'
@@ -32,6 +34,7 @@ const router = useRouter()
 const message = useMessage()
 const isTauri = !!window.__TAURI__;
 const { show: showConfirm } = useConfirm()
+const { t } = useI18n()
 
 const projectId = Number(route.params.projectId)
 const episodeId = Number(route.params.episodeId)
@@ -206,7 +209,7 @@ const initData = async () => {
       }
     }
   } catch (e) {
-    message.error('加载工作台失败')
+    message.error(t('workbench.messages.loadFailed'))
     goBack()
   } finally {
     loading.value = false
@@ -233,10 +236,10 @@ const persistState = async (silent = true) => {
       ai_config: newConfig
     } as any)
 
-    if (!silent) message.success('保存成功')
+    if (!silent) message.success(t('workbench.messages.saveSuccess'))
   } catch (e) {
     console.error('Auto-save failed', e)
-    if (!silent) message.error('保存失败')
+    if (!silent) message.error(t('workbench.messages.saveFailed'))
   }
 }
 
@@ -251,8 +254,8 @@ const saveModelConfig = async (newConfig: any) => {
       ai_config: mergedConfig
     } as any)
     episode.value.ai_config = mergedConfig
-    message.success('配置已保存')
-  } catch (e) { message.error('保存失败') }
+    message.success(t('workbench.messages.configSaved'))
+  } catch (e) { message.error(t('workbench.messages.saveFailed')) }
 }
 
 // --- Prompt Auto-Fill Logic ---
@@ -272,12 +275,12 @@ const fillPrompts = async (script: any) => {
 
   if (tasks.length === 0) return
 
-  currentStatus.value = `Refining ${tasks.length} Prompts...`
+  currentStatus.value = t('workbench.status.refiningPrompts', { count: tasks.length })
 
   // Push start of prompt refinement log
   const refinementLog = reactive({
     type: 'thought',
-    content: `\n<|PROMPT_REFINEMENT|>\nGenerating ${tasks.length} Visual Prompts...\n`
+    content: `\n<|PROMPT_REFINEMENT|>\n${t('workbench.logs.generatingVisualPrompts', { count: tasks.length })}\n`
   })
   streamLogs.value.push(refinementLog)
 
@@ -296,7 +299,12 @@ const fillPrompts = async (script: any) => {
       else if (task.category === 'storyboard') rawText = `[Action]: ${task.item.action}, [Shot]: ${task.item.shot_type}`
 
       // Push progress update to the SAME log entry
-      refinementLog.content += `[${idx + 1}/${tasks.length}] Refining ${task.category}: ${rawText.substring(0, 20)}...\n`
+      refinementLog.content += t('workbench.logs.refiningItem', {
+        current: idx + 1,
+        total: tasks.length,
+        category: task.category,
+        preview: rawText.substring(0, 20)
+      }) + '\n'
 
       await new Promise<void>((resolve, reject) => {
         const signal = abortController.value?.signal
@@ -350,7 +358,7 @@ const fillPrompts = async (script: any) => {
       })
     } catch (e: any) {
       if (e.message === 'User Terminated') {
-        message.info('提示词生成已终止')
+        message.info(t('workbench.messages.promptGenerationStopped'))
         break
       }
     }
@@ -360,17 +368,17 @@ const fillPrompts = async (script: any) => {
   refinementLog.content += '<|PROMPT_REFINEMENT_END|>\n'
 
   if (!abortController.value?.signal.aborted) {
-    currentStatus.value = 'Refinement Complete'
+    currentStatus.value = t('workbench.status.refinementComplete')
     // Push finish log manually after everything is done
     streamLogs.value.push({ type: 'finish' })
-    message.success('创作完成！')
+    message.success(t('workbench.messages.creationDone'))
     await persistState(true)
   }
 }
 
 // --- Streaming Logic ---
 const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
-  if (!data.prompt) return message.warning('请输入指令')
+  if (!data.prompt) return message.warning(t('workbench.messages.enterPrompt'))
 
   // Confirm overwrite if data exists
   const hasContent = scriptData.value && (
@@ -381,13 +389,13 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
 
   if (hasContent && data.tags?.mode !== 'split') {
     const confirmed = await showConfirm(
-      '当前剧集已存在生成内容。重设将覆盖并清空当前所有数据（包括角色、场景和分镜）。此操作不可撤销。',
-      '确认重设？'
+      t('workbench.messages.overwriteConfirmText'),
+      t('workbench.messages.overwriteConfirmTitle')
     )
     if (!confirmed) return
   }
 
-  isAiGenerating.value = true; streamLogs.value = []; currentStatus.value = 'Thinking...'; scriptReadyHighlight.value = false;
+  isAiGenerating.value = true; streamLogs.value = []; currentStatus.value = t('workbench.status.thinking'); scriptReadyHighlight.value = false;
   // showConsole.value = true;
 
   // Create new AbortController
@@ -412,9 +420,9 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
       onError: (err) => {
         let errorMsg = err.message
         if (err.message === 'User Terminated') {
-          errorMsg = '用户终止了请求'
+          errorMsg = t('workbench.messages.userTerminatedRequest')
         }
-        message.error(`生成出错: ${errorMsg}`);
+        message.error(t('workbench.messages.generateError', { error: errorMsg }));
         streamLogs.value.push({ type: 'error', content: errorMsg });
         isAiGenerating.value = false;
         abortController.value = null
@@ -433,7 +441,7 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
   } catch (e: any) {
     // Logic handled in onError mostly
     if (!abortController.value?.signal.aborted) {
-      message.error(`生成中断: ${e.message}`); streamLogs.value.push({ type: 'error', content: e.message }); isAiGenerating.value = false;
+      message.error(t('workbench.messages.generateInterrupted', { error: e.message })); streamLogs.value.push({ type: 'error', content: e.message }); isAiGenerating.value = false;
     }
     abortController.value = null
   }
@@ -443,9 +451,9 @@ const handleStopGenerate = () => {
   if (abortController.value) {
     abortController.value.abort()
     isAiGenerating.value = false
-    currentStatus.value = 'Terminated by user'
-    streamLogs.value.push({ type: 'error', content: '用户终止了操作' })
-    message.info('操作已取消')
+    currentStatus.value = t('workbench.status.terminatedByUser')
+    streamLogs.value.push({ type: 'error', content: t('workbench.messages.userTerminatedOperation') })
+    message.info(t('workbench.messages.operationCancelled'))
     // onError will be called with AbortError -> 'User Terminated'
   }
 }
@@ -556,6 +564,8 @@ const handleUpdateTimelineItem = async (payload: any) => {
 // --- Export Logic ---
 const showExportMenu = ref(false)
 const exportMenuRef = ref<HTMLElement | null>(null)
+const showLanguageMenu = ref(false)
+const languageMenuRef = ref<HTMLElement | null>(null)
 const isExporting = ref(false)
 const exportProgress = ref(0)
 const exportStatusText = ref('')
@@ -564,17 +574,20 @@ const handleClickOutside = (event: MouseEvent) => {
   if (showExportMenu.value && exportMenuRef.value && !exportMenuRef.value.contains(event.target as Node)) {
     showExportMenu.value = false
   }
+  if (showLanguageMenu.value && languageMenuRef.value && !languageMenuRef.value.contains(event.target as Node)) {
+    showLanguageMenu.value = false
+  }
 }
 
 const handleExportAssets = async () => {
   showExportMenu.value = false
   if (!episode.value) return
-  message.info('正在打包素材，请稍候...')
+  message.info(t('workbench.messages.packagingAssets'))
   try {
     const blob = await episodeApi.exportAssets(projectId, episodeId)
     if (!blob) throw new Error("Empty response")
 
-    const filename = `${episode.value.title}_素材包.zip`
+    const filename = `${episode.value.title}_${t('workbench.export.assetsFileSuffix')}.zip`
 
     try {
       if (window.showSaveFilePicker) {
@@ -588,7 +601,7 @@ const handleExportAssets = async () => {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-        message.success('保存成功');
+        message.success(t('workbench.messages.saved'));
         return;
       }
     } catch (err: any) {
@@ -610,11 +623,11 @@ const handleExportAssets = async () => {
           }]
       });
       if (!savePath) {
-          console.log('用户取消了保存');
+          console.log('[export] save cancelled by user');
           return;
       }
       await writeFile(savePath, uint8Array);
-      console.log(`文件已成功保存到: ${savePath}`);
+      console.log(`[export] file saved to: ${savePath}`);
     } else {
       const url = window.URL.createObjectURL(new Blob([blob as any]))
       const link = document.createElement('a')
@@ -625,23 +638,23 @@ const handleExportAssets = async () => {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url) 
     }
-    message.success('已开始下载')
+    message.success(t('workbench.messages.downloadStarted'))
   } catch (e) {
     console.error(e)
-    message.error('素材导出失败')
+    message.error(t('workbench.messages.exportAssetsFailed'))
   }
 }
 
 const handleExportStoryboard = async () => {
   showExportMenu.value = false
   if (!episode.value) return
-  message.info('正在导出分镜数据，请稍候...')
+  message.info(t('workbench.messages.exportingStoryboard'))
 
   try {
     const blob = await episodeApi.exportStoryboardData(projectId, episodeId)
     if (!blob) throw new Error("Empty response")
 
-    const filename = `${episode.value.title}_分镜数据.zip`
+    const filename = `${episode.value.title}_${t('workbench.export.storyboardFileSuffix')}.zip`
 
     try {
       if (window.showSaveFilePicker) {
@@ -655,7 +668,7 @@ const handleExportStoryboard = async () => {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-        message.success('保存成功');
+        message.success(t('workbench.messages.saved'));
         return;
       }
     } catch (err: any) {
@@ -677,11 +690,11 @@ const handleExportStoryboard = async () => {
           }]
       });
       if (!savePath) {
-          console.log('用户取消了保存');
+          console.log('[export] save cancelled by user');
           return;
       }
       await writeFile(savePath, uint8Array);
-      console.log(`文件已成功保存到: ${savePath}`);
+      console.log(`[export] file saved to: ${savePath}`);
     } else {
       const url = window.URL.createObjectURL(new Blob([blob as any]))
       const link = document.createElement('a')
@@ -692,10 +705,10 @@ const handleExportStoryboard = async () => {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url) 
     }
-    message.success('已开始下载')
+    message.success(t('workbench.messages.downloadStarted'))
   } catch (e) {
     console.error(e)
-    message.error('导出分镜数据失败')
+    message.error(t('workbench.messages.exportStoryboardFailed'))
   }
 }
 
@@ -707,7 +720,7 @@ const handleExportVideo = async () => {
 
   isExporting.value = true
   exportProgress.value = 0
-  exportStatusText.value = '正在渲染并合成视频，这可能需要几分钟...'
+  exportStatusText.value = t('workbench.status.renderingVideo')
 
   // Fake progress for server processing time
   const progressTimer = setInterval(() => {
@@ -720,7 +733,7 @@ const handleExportVideo = async () => {
   try {
     const blob = await episodeApi.exportVideo(projectId, episodeId, (p) => {
       clearInterval(progressTimer)
-      exportStatusText.value = '正在下载视频...'
+      exportStatusText.value = t('workbench.status.downloadingVideo')
       exportProgress.value = p
     })
     if (!blob) throw new Error("Empty response")
@@ -742,7 +755,7 @@ const handleExportVideo = async () => {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-        message.success('保存成功');
+        message.success(t('workbench.messages.saved'));
         return;
       }
     } catch (err: any) {
@@ -758,10 +771,10 @@ const handleExportVideo = async () => {
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
-    message.success('已开始下载')
+    message.success(t('workbench.messages.downloadStarted'))
   } catch (e: any) {
     console.error(e)
-    let errorMsg = '视频导出失败'
+    let errorMsg = t('workbench.messages.exportVideoFailed')
 
     // Handle Blob error response
     if (e.response?.data instanceof Blob) {
@@ -793,31 +806,31 @@ onMounted(() => {
       element: '#tour-ai-director',
       theme: 'purple',
       image: directorImg,
-      popover: { title: 'AI 导演', description: '在这里开启 AI 辅助创作，生成剧本、分镜和画面。', side: 'bottom' }
+      popover: { title: t('workbench.tour.aiDirectorTitle'), description: t('workbench.tour.aiDirectorDesc'), side: 'bottom' }
     },
     {
       element: '#tour-model-config',
       theme: 'blue',
       image: answerImg,
-      popover: { title: '模型配置', description: '调整 AI 模型参数，定制你的创作风格。', side: 'bottom' }
+      popover: { title: t('workbench.tour.modelConfigTitle'), description: t('workbench.tour.modelConfigDesc'), side: 'bottom' }
     },
     {
       element: '#tour-script-editor',
       theme: 'yellow',
       image: editorImg,
-      popover: { title: '剧本编辑', description: 'AI 生成的剧本会在这里显示，你可以自由修改和完善。', side: 'right' }
+      popover: { title: t('workbench.tour.scriptEditorTitle'), description: t('workbench.tour.scriptEditorDesc'), side: 'right' }
     },
     {
       element: '#tour-preview-module',
       theme: 'green',
       image: previewImg,
-      popover: { title: '实时预览', description: '查看生成的视频效果，支持实时播放和预览。', side: 'left' }
+      popover: { title: t('workbench.tour.previewTitle'), description: t('workbench.tour.previewDesc'), side: 'left' }
     },
     {
       element: '#tour-timeline',
       theme: 'pink',
       image: timelineImg,
-      popover: { title: '时间轴', description: '拖拽素材、剪辑视频，完成最后的成片制作。', side: 'top' }
+      popover: { title: t('workbench.tour.timelineTitle'), description: t('workbench.tour.timelineDesc'), side: 'top' }
     }
   ])
 })
@@ -880,9 +893,23 @@ onUnmounted(() => {
           </button>
         </div>
 
+        <div class="relative" ref="languageMenuRef">
+          <button @click.stop="showLanguageMenu = !showLanguageMenu"
+            class="flex items-center gap-2 px-3 py-2.5 rounded-xl transition-all font-bold text-xs uppercase tracking-wider"
+            :class="showLanguageMenu ? 'neu-pressed text-emerald-600' : 'neu-flat hover:text-emerald-500 text-gray-500'">
+            <Languages class="w-4 h-4" />
+          </button>
+          <transition name="pop">
+            <div v-if="showLanguageMenu"
+              class="absolute top-full right-0 mt-2 z-50 rounded-xl">
+              <LanguageSwitcher />
+            </div>
+          </transition>
+        </div>
+
         <button @click="resetLayout"
           class="p-2.5 rounded-full neu-flat hover:text-blue-500 active:neu-pressed transition-all text-gray-500"
-          title="Reset Layout">
+          :title="t('workbench.resetLayout')">
           <RotateCcw class="w-4 h-4" />
         </button>
 
@@ -892,7 +919,7 @@ onUnmounted(() => {
         <div class="relative group/export" ref="exportMenuRef">
           <NeuButton size="sm" variant="primary" @click.stop="showExportMenu = !showExportMenu"
             class="px-5 py-2.5 rounded-xl text-xs font-bold shadow-md active:shadow-inner transition-all flex items-center">
-            <Download class="w-4 h-4 mr-2" /> 导出
+            <Download class="w-4 h-4 mr-2" /> {{ t('workbench.export.title') }}
             <ChevronDown class="w-3 h-3 ml-2 opacity-70" />
           </NeuButton>
 
@@ -901,16 +928,16 @@ onUnmounted(() => {
               class="absolute top-full right-0 mt-2 w-40 bg-[#E0E5EC] rounded-xl shadow-xl border border-white/50 z-50 flex flex-col overflow-hidden p-1.5">
               <button @click="handleExportAssets"
                 class="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/50 hover:shadow-sm transition-all text-xs font-bold text-gray-600 active:scale-95">
-                <Package class="w-4 h-4 text-orange-500" /> 导出素材库
+                <Package class="w-4 h-4 text-orange-500" /> {{ t('workbench.export.assets') }}
               </button>
               <button @click="handleExportStoryboard"
                 class="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/50 hover:shadow-sm transition-all text-xs font-bold text-gray-600 active:scale-95">
-                <FileText class="w-4 h-4 text-purple-500" /> 导出分镜数据
+                <FileText class="w-4 h-4 text-purple-500" /> {{ t('workbench.export.storyboard') }}
               </button>
               <div class="h-px bg-gray-200/50 mx-2"></div>
               <button @click="handleExportVideo"
                 class="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/50 hover:shadow-sm transition-all text-xs font-bold text-gray-600 active:scale-95">
-                <Film class="w-4 h-4 text-blue-500" /> 导出视频
+                <Film class="w-4 h-4 text-blue-500" /> {{ t('workbench.export.video') }}
               </button>
             </div>
           </transition>
@@ -929,7 +956,7 @@ onUnmounted(() => {
             if (newData === 'FETCH') refreshEpisodeData()
             else { scriptData = newData; persistState(true); }
           }"
-          @stream-start="(msg) => { isAiGenerating = true; showConsole = true; currentStatus = msg || 'Thinking...'; streamLogs = [] }"
+          @stream-start="(msg) => { isAiGenerating = true; showConsole = true; currentStatus = msg || t('workbench.status.thinking'); streamLogs = [] }"
           @stream-message="handleStreamMessage"
           @stream-end="() => { isAiGenerating = false; currentStatus = ''; refreshEpisodeData() }" />
 
@@ -945,7 +972,7 @@ onUnmounted(() => {
               class="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#E0E5EC]/90 backdrop-blur-md text-blue-600 px-5 py-2.5 rounded-full shadow-[5px_5px_10px_#b8b9be,-5px_-5px_10px_#ffffff] flex items-center gap-3 border border-white/20 cursor-pointer hover:scale-105 transition-all select-none"
               @click="showConsole = true">
               <Loader2 class="w-4 h-4 animate-spin text-blue-500" />
-              <span class="text-xs font-mono font-bold tracking-wide">{{ currentStatus || 'Thinking...' }}</span>
+              <span class="text-xs font-mono font-bold tracking-wide">{{ currentStatus || t('workbench.status.thinking') }}</span>
             </div>
           </transition>
         </div>
@@ -978,7 +1005,7 @@ onUnmounted(() => {
           @mousedown="startLibDrag">
           <div class="flex items-center gap-2 overflow-hidden text-gray-500">
             <Film class="w-4 h-4 text-blue-500" />
-            <h3 class="font-bold text-gray-600 text-xs tracking-wider uppercase">素材库</h3>
+            <h3 class="font-bold text-gray-600 text-xs tracking-wider uppercase">{{ t('workbench.videoLibrary.title') }}</h3>
           </div>
           <button @click="showVideoLibrary = false"
             class="p-1 rounded-full neu-flat hover:text-red-500 active:neu-pressed transition-all text-gray-400"
@@ -993,7 +1020,7 @@ onUnmounted(() => {
             <div class="w-12 h-12 rounded-full neu-pressed flex items-center justify-center">
               <Film class="w-5 h-5" />
             </div>
-            <span class="text-xs font-bold">暂无素材</span>
+            <span class="text-xs font-bold">{{ t('workbench.videoLibrary.empty') }}</span>
           </div>
           <div v-for="item in videoLibrary.filter(i => i.type === 'video')" :key="item.id"
             class="aspect-video neu-flat rounded-xl flex items-center justify-center relative group cursor-grab active:cursor-grabbing hover:scale-[1.02] transition-transform overflow-hidden"
@@ -1006,7 +1033,7 @@ onUnmounted(() => {
             </div>
             <span
               class="text-[9px] absolute bottom-1 left-1 bg-[#E0E5EC]/80 backdrop-blur text-gray-600 px-1.5 py-0.5 rounded-md font-bold shadow-sm pointer-events-none truncate max-w-[90%]">{{
-                item.name || 'Untitled' }}</span>
+                item.name || t('workbench.videoLibrary.untitled') }}</span>
           </div>
         </div>
         <div
@@ -1045,7 +1072,7 @@ onUnmounted(() => {
 
           <div class="text-center space-y-2">
             <h3 class="text-lg font-bold text-gray-700">{{ exportStatusText }}</h3>
-            <p class="text-xs text-gray-500">请勿关闭页面</p>
+            <p class="text-xs text-gray-500">{{ t('workbench.export.keepPageOpen') }}</p>
           </div>
 
           <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden shadow-inner">
