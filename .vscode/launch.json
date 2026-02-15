@@ -1,0 +1,73 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: FastAPI (uvicorn, reload)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/apps/backend/.venv/bin/python",
+      "module": "uvicorn",
+      "cwd": "${workspaceFolder}/apps/backend",
+      "args": [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "11451",
+        "--reload"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/apps/backend"
+      },
+      "jinja": true,
+      "justMyCode": false
+    },
+    {
+      "name": "Backend: entry.py (desktop mode)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/apps/backend/.venv/bin/python",
+      "program": "${workspaceFolder}/apps/backend/entry.py",
+      "cwd": "${workspaceFolder}/apps/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/apps/backend"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Frontend: Vite dev server (pnpm)",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/apps/frontend",
+      "command": "corepack pnpm dev"
+    },
+    {
+      "name": "Frontend: Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/apps/frontend",
+      "sourceMaps": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Fullstack: Backend + Frontend",
+      "configurations": [
+        "Backend: FastAPI (uvicorn, reload)",
+        "Frontend: Vite dev server (pnpm)"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "Fullstack + Browser",
+      "configurations": [
+        "Backend: FastAPI (uvicorn, reload)",
+        "Frontend: Vite dev server (pnpm)",
+        "Frontend: Chrome"
+      ],
+      "stopAll": true
+    }
+  ]
+}

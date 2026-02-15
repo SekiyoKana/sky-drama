@@ -1,0 +1,60 @@
+services:
+  backend:
+    build:
+      context: ../../apps/backend
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.12-slim}
+        APT_MIRROR: ${APT_MIRROR:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    container_name: sky-drama-backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 11451 --workers 2 --timeout-keep-alive 600
+    ports:
+      - "${BACKEND_PORT:-11451}:11451"
+    volumes:
+      - ../../apps/backend/data:/app/data
+      - ../../apps/backend/logs:/app/logs
+    environment:
+      APP_WORK_DIR: /app/data
+      ASSETS_DIR: /app/data/assets
+      DATABASE_URL: sqlite:////app/data/database.db
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      SKYDRAMA_HTTP_PROXY: ${SKYDRAMA_HTTP_PROXY:-}
+      SKYDRAMA_HTTPS_PROXY: ${SKYDRAMA_HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,backend}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app_network
+    restart: always
+
+  frontend:
+    build:
+      context: ../../apps/frontend
+      args:
+        NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:20-alpine}
+        NGINX_BASE_IMAGE: ${NGINX_BASE_IMAGE:-nginx:alpine}
+        VITE_API_URL: ${VITE_API_URL:-/v1}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    container_name: sky-drama-frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+    environment:
+      BACKEND_HOST: backend
+      BACKEND_PORT: "11451"
+    networks:
+      - app_network
+    restart: always
+
+networks:
+  app_network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450

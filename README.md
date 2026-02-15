@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="frontend/public/logo.png" width="200" />
+<img src="apps/frontend/public/logo.png" width="200" />
 
 当前版本： 0.1.0 Beta 
 
@@ -105,25 +105,43 @@
 ```bash
 git clone [https://github.com/SekiyoKana/sky-drama.git](https://github.com/SekiyoKana/sky-drama.git)
 cd sky-drama
-docker-compose up -d
+make docker-up
 
 ```
 
 访问 `http://localhost:5173` 即可开始创作。
 
+如果你所在网络无法访问 Docker Hub（例如拉取 `python:3.12-slim` 超时），可先创建并编辑镜像源配置：
+
+```bash
+make docker-env
+# 编辑 deploy/docker/.env，按你的网络填入镜像站
+# 例如：
+# PYTHON_BASE_IMAGE=docker.m.daocloud.io/python:3.12-slim
+# NODE_BASE_IMAGE=docker.m.daocloud.io/node:20-alpine
+# NGINX_BASE_IMAGE=docker.m.daocloud.io/nginx:alpine
+# 如果需要代理，也可配置：
+# HTTP_PROXY=http://host.docker.internal:7890
+# HTTPS_PROXY=http://host.docker.internal:7890
+# NO_PROXY=localhost,127.0.0.1,backend
+make docker-up
+```
+
 ### 方式二：桌面应用 (Beta)
 
 请前往 [Releases](https://github.com/SekiyoKana/sky-drama/releases) 页面下载对应平台的安装包, 或自行打包：
 
-* **macOS**: `Sky-Drama-x.x.x.dmg` 或使用 `build_app.sh` 自行编译
-* **Windows**: `Sky-Drama-setup-x.x.x.exe` 或使用 `build_app.bat` 自行编译
+* **macOS / Linux**: 运行 `./scripts/desktop/build.sh`
+* **Windows**: 运行 `.\scripts\desktop\build.bat`
 
 ### 方式三：源码开发
 
 #### 前置要求
 
-* Node.js (v20+)
+* Node.js (推荐 v23，最低 v20.12+，推荐使用 `.nvmrc`)
+* pnpm (v9, 推荐通过 Corepack 管理)
 * Python (v3.12+)
+* Rust 工具链（`cargo` / `rustc`，仅桌面端打包需要）
 * **FFmpeg (核心组件)**: ⚠️ **必须手动安装**。
 * 请前往 [FFmpeg 官网](https://ffmpeg.org/download.html) 下载。
 * 安装后**必须**将其添加到系统的 `PATH` 环境变量中，确保在终端输入 `ffmpeg` 可直接运行。
@@ -136,30 +154,57 @@ docker-compose up -d
 ```bash
 git clone [https://github.com/SekiyoKana/sky-drama.git](https://github.com/SekiyoKana/sky-drama.git)
 cd sky-drama
+nvm use || nvm install
+corepack enable
 
 ```
 
 
 2. **后端设置**
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+cd apps/backend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 # 运行服务
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 127.0.0.1 --port 11451 --reload
 
 ```
 
 
 3. **前端设置**
 ```bash
-cd frontend
-npm install
-npm run dev
+cd apps/frontend
+corepack pnpm install --frozen-lockfile
+corepack pnpm dev
 
 ```
+
+### 方式四：工程化命令（团队协作推荐）
+
+根目录提供 `Makefile`，可统一日常开发与打包命令：
+
+```bash
+# 一次性安装依赖（后端 + 前端）
+make setup
+
+# 本地开发
+make dev-backend
+make dev-frontend
+
+# Docker 一键启动
+make docker-up
+
+# 桌面端打包（macOS/Linux）
+make desktop-build
+```
+
+桌面打包支持以下环境变量：
+- `SKYDRAMA_SKIP_INSTALL=1`：跳过依赖安装（适合 CI 缓存命中场景）
+- `SKYDRAMA_TAURI_BUNDLES=app`：自定义 Tauri bundles 类型
+
+目录与工程规范详见：`docs/project-structure.md`
 
 
 
@@ -191,11 +236,11 @@ npm run dev
 3. **自定义 API 适配**
 Sky Drama 默认的 Sora 2 API 策略基于标准的 `/videos` (创建) 和 `/videos/{task_id}` (查询) 接口格式。
 如果您使用的第三方 API 厂商采用了不同的接口规范（例如：流式输出、WebSocket 或非标准端点），您需要自行编写 **转换器 (Formatter)** 进行适配。
-* **现有参考示例**: `backend/app/utils/sora_api/yi.py` (针对流式接口的适配实现)
+* **现有参考示例**: `apps/backend/app/utils/sora_api/yi.py` (针对流式接口的适配实现)
 * **如何添加新转换器**:
-请在 `backend/app/utils/sora_api/` 目录下创建一个新的 Python 文件（例如 `my_provider.py`），并继承 `Base` 类实现以下逻辑：
+请在 `apps/backend/app/utils/sora_api/` 目录下创建一个新的 Python 文件（例如 `my_provider.py`），并继承 `Base` 类实现以下逻辑：
 ```python
-# backend/app/utils/sora_api/my_provider.py
+# apps/backend/app/utils/sora_api/my_provider.py
 from .base import Base
 from typing import List, Any, Dict
 
