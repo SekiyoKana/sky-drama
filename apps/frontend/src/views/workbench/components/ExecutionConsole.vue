@@ -491,6 +491,16 @@ onUnmounted(() => {
                 </div>
               </div>
 
+              <!-- Backend Log -->
+              <div v-if="log.type === 'backend_log'" class="flex gap-3 group">
+                <div class="w-1 bg-green-400/30 group-hover:bg-green-500 rounded-full shrink-0 my-1 transition-colors"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-green-700 leading-relaxed text-xs whitespace-pre-wrap font-mono">
+                    {{ log.content }}
+                  </div>
+                </div>
+              </div>
+
               <!-- System Messages -->
               <div v-if="log.type === 'status'" class="flex items-center gap-2 text-gray-400 py-1 text-[10px] uppercase font-bold tracking-wider justify-center">
                  <div class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>

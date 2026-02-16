@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Backend: FastAPI (uvicorn, reload)",
+      "name": "Backend: FastAPI (debug, no reload)",
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/apps/backend/.venv/bin/python",
@@ -13,14 +13,14 @@
         "--host",
         "127.0.0.1",
         "--port",
-        "11451",
-        "--reload"
+        "11451"
       ],
       "env": {
         "PYTHONPATH": "${workspaceFolder}/apps/backend"
       },
       "jinja": true,
-      "justMyCode": false
+      "justMyCode": true,
+      "subProcess": false
     },
     {
       "name": "Backend: entry.py (desktop mode)",
@@ -33,7 +33,7 @@
         "PYTHONPATH": "${workspaceFolder}/apps/backend"
       },
       "console": "integratedTerminal",
-      "justMyCode": false
+      "justMyCode": true
     },
     {
       "name": "Frontend: Vite dev server (pnpm)",
@@ -55,7 +55,7 @@
     {
       "name": "Fullstack: Backend + Frontend",
       "configurations": [
-        "Backend: FastAPI (uvicorn, reload)",
+        "Backend: FastAPI (debug, no reload)",
         "Frontend: Vite dev server (pnpm)"
       ],
       "stopAll": true
@@ -63,7 +63,7 @@
     {
       "name": "Fullstack + Browser",
       "configurations": [
-        "Backend: FastAPI (uvicorn, reload)",
+        "Backend: FastAPI (debug, no reload)",
         "Frontend: Vite dev server (pnpm)",
         "Frontend: Chrome"
       ],

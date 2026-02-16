@@ -17,6 +17,7 @@ from app.models.apikey import ApiKey
 from app.models.project import Episode
 from app.models.style import Style
 from app.core.config import settings
+from app.core.director_trace import DirectorTrace
 
 logger = logging.getLogger(__name__)
 
@@ -349,8 +350,27 @@ async def generate_content(
             if "input_reference" not in req.data and len(referenced_images) > 0:
                 req.data["input_reference"] = referenced_images[0]
 
+    req_data = req.data if isinstance(req.data, dict) else {}
+    trace_id = str(req_data.get("trace_id") or uuid.uuid4().hex)
+    if isinstance(req.data, dict):
+        req.data.pop("trace_id", None)
+    trace = DirectorTrace(run_id=trace_id)
+    trace.start(
+        {
+            "user_id": getattr(current_user, "id", None),
+            "project_id": req.project_id,
+            "episode_id": req.episode_id,
+            "type": req.type,
+            "skill": req.skill,
+            "prompt_length": len(req.prompt or ""),
+            "prompt_preview": (req.prompt or "")[:240],
+            "data_keys": sorted(list(req_data.keys())),
+        }
+    )
+
     engine = AIEngine(db, current_user, episode.ai_config)
     engine.set_context(episode)
+    engine.set_trace(trace)
 
     style_id = None
     if episode.ai_config and episode.ai_config.get("style", None) and episode.ai_config["style"].get("id"):
@@ -389,4 +409,25 @@ async def generate_content(
             style=style
         )
 
-    return StreamingResponse(stream_gen, media_type="text/event-stream")
+    def trace_stream():
+        try:
+            yield engine._format_sse(
+                "trace",
+                {
+                    "run_id": trace.run_id,
+                    "status": "running",
+                    "started_at": trace.record.get("started_at"),
+                },
+            )
+            for chunk in stream_gen:
+                yield chunk
+
+            trace.finish(status="error" if trace.has_errors() else "completed")
+        except GeneratorExit:
+            trace.finish(status="aborted", error="Client disconnected")
+            return
+        except Exception as e:
+            trace.finish(status="error", error=str(e))
+            raise
+
+    return StreamingResponse(trace_stream(), media_type="text/event-stream")

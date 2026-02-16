@@ -22,6 +22,9 @@ def run_in_thread_and_stream(
             else:
                 # If it's a single value, just put it
                 q.put(result)
+        except GeneratorExit:
+            # Normal close path when upstream stream is terminated by caller.
+            pass
         except Exception as e:
             import traceback
 

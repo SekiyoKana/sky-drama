@@ -14,6 +14,7 @@ import { projectApi, episodeApi, aiApi } from '@/api'
 import { useMessage } from '@/utils/useMessage'
 import { useConfirm } from '@/utils/useConfirm'
 import { startOnboardingTour } from '@/utils/tour'
+import { debugLogger } from '@/utils/debugLogger'
 
 import PreviewModule from './components/PreviewModule.vue'
 import AiDirectorModule from './components/AiDirectorModule.vue'
@@ -55,6 +56,9 @@ const streamLogs = ref<any[]>([])
 const currentStatus = ref('')
 const showConsole = ref(false)
 const showAiDirector = ref(false) // Default visible
+const activeTraceId = ref('')
+const lastProgressLogged = ref(0)
+const activeThoughtLogIndex = ref<number | null>(null)
 
 // --- Layout State ---
 type ModuleType = 'script' | 'preview'
@@ -396,6 +400,9 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
   }
 
   isAiGenerating.value = true; streamLogs.value = []; currentStatus.value = t('workbench.status.thinking'); scriptReadyHighlight.value = false;
+  activeTraceId.value = ''
+  lastProgressLogged.value = 0
+  activeThoughtLogIndex.value = null
   // showConsole.value = true;
 
   // Create new AbortController
@@ -410,24 +417,43 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
       type = 'text'
     }
 
+    const traceId = `wb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    debugLogger.addLog('frontend', `[DirectorTrace] Starting run ${traceId}`, 'info', undefined, {
+      projectId,
+      episodeId,
+      mode: data.tags?.mode || 'script',
+      promptPreview: data.prompt.slice(0, 160)
+    })
+
     await aiApi.skillsStream({
       projectId: projectId, episodeId: episodeId,
       prompt: data.prompt,
       skill: skill,
-      type: type
+      type: type,
+      data: { trace_id: traceId }
     }, {
       onMessage: (msg) => { handleStreamMessage(msg) },
       onError: (err) => {
         let errorMsg = err.message
+        const isInterrupted = err.message === 'User Terminated'
         if (err.message === 'User Terminated') {
           errorMsg = t('workbench.messages.userTerminatedRequest')
         }
+        debugLogger.addLog('frontend', `[DirectorTrace] Run failed ${activeTraceId.value || traceId}`, 'error', undefined, {
+          error: errorMsg
+        })
+        streamLogs.value.push({
+          type: 'status',
+          content: isInterrupted ? '[INTERRUPTED] Request terminated by user' : '[ERROR] Request failed'
+        })
         message.error(t('workbench.messages.generateError', { error: errorMsg }));
         streamLogs.value.push({ type: 'error', content: errorMsg });
         isAiGenerating.value = false;
         abortController.value = null
+        activeThoughtLogIndex.value = null
       },
       onFinish: async () => {
+        debugLogger.addLog('frontend', `[DirectorTrace] Run finished ${activeTraceId.value || traceId}`, 'info')
         // Check for empty prompts and fill them
         if (scriptData.value && !abortController.value?.signal.aborted) {
           await fillPrompts(scriptData.value)
@@ -435,6 +461,7 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
         isAiGenerating.value = false;
         currentStatus.value = '';
         abortController.value = null
+        activeThoughtLogIndex.value = null
         await refreshEpisodeData();
       }
     }, abortController.value.signal); // Pass signal
@@ -450,11 +477,14 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
 const handleStopGenerate = () => {
   if (abortController.value) {
     abortController.value.abort()
+    debugLogger.addLog('frontend', `[DirectorTrace] Run aborted ${activeTraceId.value || '-'}`, 'warn')
     isAiGenerating.value = false
     currentStatus.value = t('workbench.status.terminatedByUser')
+    streamLogs.value.push({ type: 'status', content: '[INTERRUPTED] Generation aborted' })
     streamLogs.value.push({ type: 'error', content: t('workbench.messages.userTerminatedOperation') })
     message.info(t('workbench.messages.operationCancelled'))
     // onError will be called with AbortError -> 'User Terminated'
+    activeThoughtLogIndex.value = null
   }
 }
 
@@ -465,11 +495,32 @@ const refreshEpisodeData = async () => {
 
 const handleStreamMessage = (msg: any) => {
   switch (msg.type) {
+    case 'trace':
+      activeTraceId.value = msg.payload?.run_id || activeTraceId.value
+      if (activeTraceId.value) {
+        streamLogs.value.push({ type: 'status', content: `[Trace] ${activeTraceId.value}` })
+        debugLogger.addLog('frontend', `[DirectorTrace] Active run ${activeTraceId.value}`, 'info', undefined, msg.payload)
+      }
+      break;
     case 'status': currentStatus.value = msg.payload; break;
+    case 'progress':
+      {
+        const progress = Number(msg.payload || 0)
+        if (!Number.isNaN(progress) && (progress === 1 || progress === 100 || progress - lastProgressLogged.value >= 10)) {
+          lastProgressLogged.value = progress
+          streamLogs.value.push({ type: 'status', content: `Progress: ${progress}%` })
+        }
+      }
+      break;
+    case 'backend_log':
+      streamLogs.value.push({ type: 'backend_log', content: msg.payload })
+      break;
     case 'thought':
-      const lastLog = streamLogs.value[streamLogs.value.length - 1]
-      if (lastLog && lastLog.type === 'thought') lastLog.content += msg.payload
-      else streamLogs.value.push({ type: 'thought', content: msg.payload })
+      if (activeThoughtLogIndex.value === null || streamLogs.value[activeThoughtLogIndex.value]?.type !== 'thought') {
+        streamLogs.value.push({ type: 'thought', content: '' })
+        activeThoughtLogIndex.value = streamLogs.value.length - 1
+      }
+      streamLogs.value[activeThoughtLogIndex.value].content += msg.payload
       break;
     case 'tool_start': streamLogs.value.push({ type: 'tool', name: msg.payload.name, input: msg.payload.input, status: 'running', output: null }); break;
     case 'tool_end':
@@ -487,9 +538,26 @@ const handleStreamMessage = (msg: any) => {
       } catch (e) {
         // Suppress
       }
+      activeThoughtLogIndex.value = null
       break;
-    case 'error': streamLogs.value.push({ type: 'error', content: msg.payload }); break;
-    case 'message': streamLogs.value.push({ type: 'thought', content: msg.payload }); break;
+    case 'error':
+      streamLogs.value.push({ type: 'status', content: '[ERROR] Server stream error' })
+      streamLogs.value.push({ type: 'error', content: msg.payload })
+      activeThoughtLogIndex.value = null
+      break;
+    case 'text_finish':
+      if (msg.payload?.text) {
+        streamLogs.value.push({ type: 'thought', content: msg.payload.text })
+      }
+      activeThoughtLogIndex.value = null
+      break;
+    case 'message':
+      if (activeThoughtLogIndex.value === null || streamLogs.value[activeThoughtLogIndex.value]?.type !== 'thought') {
+        streamLogs.value.push({ type: 'thought', content: '' })
+        activeThoughtLogIndex.value = streamLogs.value.length - 1
+      }
+      streamLogs.value[activeThoughtLogIndex.value].content += String(msg.payload ?? '')
+      break;
   }
 }
 

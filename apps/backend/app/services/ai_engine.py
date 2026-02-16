@@ -34,11 +34,20 @@ class AIEngine:
         self.client = client
         self.model_name = model
         self.episode = None
+        self.trace = None
 
     def set_context(self, episode):
         self.episode = episode
 
+    def set_trace(self, trace):
+        self.trace = trace
+
     def _format_sse(self, event_type: str, data: Any):
+        if self.trace:
+            try:
+                self.trace.capture(event_type, data)
+            except Exception as e:
+                logger.debug(f"Trace capture failed for event '{event_type}': {e}")
         payload = json.dumps({"type": event_type, "payload": data}, ensure_ascii=False)
         return f"data: {payload}\n\n"
         
@@ -189,20 +198,20 @@ class AIEngine:
         return client, model_name, real_key, base_url, api_key_record
 
     def generate_media_stream(self, media_type: str, prompt: str, style: StyleBase = None, data: dict = None):
-        yield self._format_sse("status", f"Starting {media_type} generation...")
-        yield self._format_sse("backend_log", f"--- [Backend] Starting {media_type} generation ---")
-        yield self._format_sse("backend_log", f"Prompt: {prompt}")
-
-        client, model_name, real_key, base_url, api_key_record = self._init_client_and_model(
-            type=media_type
-        )
-        if not real_key:
-            yield self._format_sse(
-                "error", f"No API configuration found for {media_type}"
-            )
-            return
-
         try:
+            yield self._format_sse("status", f"Starting {media_type} generation...")
+            yield self._format_sse("backend_log", f"--- [Backend] Starting {media_type} generation ---")
+            yield self._format_sse("backend_log", f"Prompt: {prompt}")
+
+            client, model_name, real_key, base_url, api_key_record = self._init_client_and_model(
+                type=media_type
+            )
+            if not real_key:
+                yield self._format_sse(
+                    "error", f"No API configuration found for {media_type}"
+                )
+                return
+
             yield self._format_sse("status", "Requesting generation API...")
 
             headers = {
@@ -612,21 +621,24 @@ class AIEngine:
                 },
             )
 
+        except GeneratorExit:
+            logger.info(f"[AIEngine] Media stream '{media_type}' closed by caller.")
+            return
         except Exception as e:
             logger.error(f"Generation Loop Error: {e}")
             yield self._format_sse("error", f"Generation failed: {str(e)}")
 
     def generate_stream(self, prompt: str, tool_name: str, **kwargs):
-        client, model, _, _, _ = self._init_client_and_model(type="text")
-        if not client:
-            yield self._format_sse("error", "No API Key configured for text generation")
-            return
-        self.client = client
-        self.model_name = model
-
-        yield self._format_sse("status", "Initializing AI Director...")
-
         try:
+            client, model, _, _, _ = self._init_client_and_model(type="text")
+            if not client:
+                yield self._format_sse("error", "No API Key configured for text generation")
+                return
+            self.client = client
+            self.model_name = model
+
+            yield self._format_sse("status", "Initializing AI Director...")
+
             skill_args = {"prompt": prompt}
 
             if "title" in kwargs:
@@ -676,6 +688,9 @@ class AIEngine:
                 final_output_accumulator=final_output_accumulator,
             )
 
+        except GeneratorExit:
+            logger.info(f"[AIEngine] Text stream '{tool_name}' closed by caller.")
+            return
         except Exception as e:
             yield self._format_sse("error", f"Execution error: {str(e)}")
 
@@ -687,32 +702,36 @@ class AIEngine:
         start_time = time.time()
         last_progress = 0
 
-        for chunk in director_gen:
-            # Time-based progress simulation: 1% per second
-            elapsed = time.time() - start_time
-            current_progress = min(int(elapsed), 98) # Cap at 98%
-            
-            if current_progress > last_progress:
-                yield self._format_sse("progress", current_progress)
-                last_progress = current_progress
+        try:
+            for chunk in director_gen:
+                # Time-based progress simulation: 1% per second
+                elapsed = time.time() - start_time
+                current_progress = min(int(elapsed), 98) # Cap at 98%
+                
+                if current_progress > last_progress:
+                    yield self._format_sse("progress", current_progress)
+                    last_progress = current_progress
 
-            # logger.debug(f"[Stream Chunk] {chunk}") # Verbose debug
-            if not isinstance(chunk, dict):
-                continue
+                # logger.debug(f"[Stream Chunk] {chunk}") # Verbose debug
+                if not isinstance(chunk, dict):
+                    continue
 
-            msg_type = chunk.get("type")
-            content = chunk.get("content", "")
+                msg_type = chunk.get("type")
+                content = chunk.get("content", "")
 
-            if msg_type == "status":
-                yield self._format_sse("status", content)
-                yield self._format_sse("backend_log", f"[{tool_name}] Status: {content}")
-            elif msg_type == "token":
-                final_output_accumulator += content
-                yield self._format_sse("thought", content)
-            elif msg_type == "error":
-                logger.error(f"[{tool_name}] Error: {content}")
-                yield self._format_sse("error", f"[{tool_name}] {content}")
-                yield self._format_sse("backend_log", f"[{tool_name}] ERROR: {content}")
+                if msg_type == "status":
+                    yield self._format_sse("status", content)
+                    yield self._format_sse("backend_log", f"[{tool_name}] Status: {content}")
+                elif msg_type == "token":
+                    final_output_accumulator += content
+                    yield self._format_sse("thought", content)
+                elif msg_type == "error":
+                    logger.error(f"[{tool_name}] Error: {content}")
+                    yield self._format_sse("error", f"[{tool_name}] {content}")
+                    yield self._format_sse("backend_log", f"[{tool_name}] ERROR: {content}")
+        except GeneratorExit:
+            logger.info(f"[AI Director] Stream for {tool_name} closed by caller.")
+            return final_output_accumulator
 
         logger.info(f"[AI Director] Stream finished. Total length: {len(final_output_accumulator)}")
         return final_output_accumulator

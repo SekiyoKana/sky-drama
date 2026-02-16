@@ -95,6 +95,13 @@
    <img src="docs/console.png" style="margin: 0 auto" width="600" />
 </div>
 
+### 10. 深度日志与导演执行回溯
+- 导演工作台每次执行都会生成 `trace_id`，并在控制台流中返回。
+- 后端会将执行记录持久化到 `logs/director_runs/<run_id>.json`，包含状态流、进度、错误、耗时与结果摘要。
+- 可通过接口查看历史与详情：
+  - `GET /v1/logs/director-runs`
+  - `GET /v1/logs/director-runs/{run_id}`
+
 ---
 
 ## 🚀 快速开始
@@ -280,7 +287,7 @@ class MyProvider(Base):
 * [ ] **本地模型集成**: 支持通过 Ollama 调用本地大语言模型。
 * [ ] **高级视频生成**: 支持更多视频模型的首尾帧控制、多图参考生成等高级功能。
 * [ ] **时间轴增强**: 支持在时间轴剪辑中添加过渡动画效果。
-* [ ] **深度日志**: 提供更详细的 Console 日志和导演工作台 (Director Workbench) 执行记录，便于调试与回溯。
+* [√] **深度日志**: 提供更详细的 Console 日志和导演工作台 (Director Workbench) 执行记录，便于调试与回溯。
 * [ ] **工程管理**: 支持工程文件的完整导出、迁移及备份。
 * [ ] **自定义创作**: 支持自定义提示词 (Prompt) 模板与工作流。
 * [ ] **工具箱扩展**: 集成更多的 AI 辅助工具。
