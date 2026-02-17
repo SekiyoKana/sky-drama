@@ -23,6 +23,16 @@ from app.utils.image_utils import combine_image, split_grid_image, to_base64
 from app.schemas.style import StyleBase
 from app.utils.sora_api.main import SoraApiFormatter
 from app.core.config import settings
+from app.utils.think_filter import sanitize_think_payload, strip_think_segments
+from app.core.provider_platform import (
+    PLATFORM_OLLAMA,
+    PLATFORM_VOLCENGINE,
+    normalize_platform,
+    resolve_base_url,
+    resolve_endpoint,
+    requires_api_key,
+)
+from app.utils.ollama_client import OllamaClient, list_ollama_models
 
 
 class AIEngine:
@@ -185,14 +195,38 @@ class AIEngine:
         if not api_key_record:
             raise HTTPException(status_code=404, detail="API Key 不存在")
         
+        platform = normalize_platform(api_key_record.platform)
         # 直接使用明文 Key
-        real_key = api_key_record.encrypted_key
+        real_key = api_key_record.encrypted_key or ""
         # try:
         #     real_key = decrypt_data(api_key_record.encrypted_key)
         # except:
         #     raise HTTPException(status_code=500, detail="Key 解密失败")
 
-        base_url = api_key_record.base_url or "https://api.openai.com/v1"
+        base_url = resolve_base_url(platform, api_key_record.base_url)
+
+        if platform == PLATFORM_OLLAMA:
+            text_endpoint = resolve_endpoint(
+                platform, "text_endpoint", api_key_record.text_endpoint
+            )
+            if not model_name:
+                try:
+                    discovered = list_ollama_models(base_url, real_key)
+                    if discovered:
+                        model_name = discovered[0]
+                except Exception:
+                    pass
+            if type == "text":
+                client = OllamaClient(
+                    base_url=base_url,
+                    api_key=real_key,
+                    chat_endpoint=text_endpoint,
+                )
+                return client, model_name, real_key, base_url, api_key_record
+            return None, model_name, real_key, base_url, api_key_record
+
+        if requires_api_key(platform) and not real_key:
+            raise HTTPException(status_code=400, detail="API Key 未配置")
 
         client = OpenAI(api_key=real_key, base_url=base_url)
         return client, model_name, real_key, base_url, api_key_record
@@ -203,10 +237,16 @@ class AIEngine:
             yield self._format_sse("backend_log", f"--- [Backend] Starting {media_type} generation ---")
             yield self._format_sse("backend_log", f"Prompt: {prompt}")
 
-            client, model_name, real_key, base_url, api_key_record = self._init_client_and_model(
+            _, model_name, real_key, base_url, api_key_record = self._init_client_and_model(
                 type=media_type
             )
-            if not real_key:
+            platform = normalize_platform(api_key_record.platform) if api_key_record else ""
+            if platform == PLATFORM_OLLAMA:
+                yield self._format_sse(
+                    "error", "Ollama 平台目前仅支持文本工作流，不支持图像/视频生成。"
+                )
+                return
+            if requires_api_key(platform) and not real_key:
                 yield self._format_sse(
                     "error", f"No API configuration found for {media_type}"
                 )
@@ -265,9 +305,19 @@ class AIEngine:
                 headers.pop("Content-Type", None)
 
                 target_model = model_name if model_name else "sora-2"
-                endpoint = api_key_record.video_endpoint if api_key_record else "/videos"
+                endpoint = resolve_endpoint(
+                    platform,
+                    "video_endpoint",
+                    api_key_record.video_endpoint if api_key_record else None,
+                )
+                fetch_endpoint = resolve_endpoint(
+                    platform,
+                    "video_fetch_endpoint",
+                    api_key_record.video_fetch_endpoint if api_key_record else None,
+                )
                 base_url_str = str(base_url).rstrip('/')
                 api_url = f"{base_url_str}{endpoint}"
+                yield self._format_sse("backend_log", f"Video Endpoint: {api_url}")
                 
                 mode = data.get("generation_mode") if isinstance(data, dict) else None
                 raw_ref = data.get("input_reference") if isinstance(data, dict) else None
@@ -284,22 +334,32 @@ class AIEngine:
                     if not ref_list:
                         yield self._format_sse("error", "未找到分镜参考图，请先生成分镜图后再试。")
                         return
-                    grid_ref = ref_list[0]
-                    grid_local = self._resolve_local_path(grid_ref) or grid_ref
-                    try:
-                        frame_paths = split_grid_image(grid_local, rows=3, cols=3)
-                    except Exception as e:
-                        raise RuntimeError(f"Failed to split storyboard image: {str(e)}")
-                    image_refs = frame_paths
-                    temp_files.extend(frame_paths)
+                    if platform == PLATFORM_VOLCENGINE:
+                        # Volcengine official API expects content[].image_url, not local multipart files.
+                        image_refs = [str(ref) for ref in ref_list if ref]
+                    else:
+                        grid_ref = ref_list[0]
+                        grid_local = self._resolve_local_path(grid_ref) or grid_ref
+                        try:
+                            frame_paths = split_grid_image(grid_local, rows=3, cols=3)
+                        except Exception as e:
+                            raise RuntimeError(f"Failed to split storyboard image: {str(e)}")
+                        image_refs = frame_paths
+                        temp_files.extend(frame_paths)
                 else:
                     final_ref = None
                     if ref_list:
-                        local_ref = self._resolve_local_path(ref_list[0])
-                        final_ref = local_ref if local_ref else ref_list[0]
+                        if platform == PLATFORM_VOLCENGINE:
+                            final_ref = ref_list[0]
+                        else:
+                            local_ref = self._resolve_local_path(ref_list[0])
+                            final_ref = local_ref if local_ref else ref_list[0]
                     image_refs = [final_ref] if final_ref else []
                 
-                formatter = SoraApiFormatter.search(base_url_str)
+                formatter = None if platform == PLATFORM_VOLCENGINE else SoraApiFormatter.search(base_url_str)
+                task_id = None
+                task_data: Dict[str, Any] = {}
+                should_poll_task = False
                 try:
                     if formatter:
                         yield self._format_sse("status", f"Delegating to {formatter.name} formatter...")
@@ -335,35 +395,137 @@ class AIEngine:
                             raise RuntimeError(f"Formatter Error: {str(e)}")
 
                     else:
-                        if not image_refs:
-                            yield self._format_sse("error", "未找到分镜参考图，请先生成分镜图后再试。")
-                            return
+                        should_poll_task = True
+                        if platform == PLATFORM_VOLCENGINE:
+                            # Official Volcengine video generation API expects JSON body:
+                            # { "model": "...", "content": [{ "type":"text","text":"..." }, ...] }
+                            content_payload: List[Dict[str, Any]] = [
+                                {"type": "text", "text": f"{prompt}"}
+                            ]
 
-                        form_data = {
-                            "model": target_model,
-                            "prompt": f'{prompt}',
-                            "seconds": "15",
-                            "size": "1280x720",
-                            "watermark": False,
-                        }
-
-                        if mode == "keyframes":
-                            files_payload = []
-                            file_handles = []
-                            try:
-                                for idx, img_path in enumerate(image_refs):
-                                    local_path = self._resolve_local_path(img_path) or img_path
-                                    if not local_path or not os.path.exists(local_path):
-                                        raise RuntimeError("无法读取关键帧参考图，请检查分镜图是否有效。")
-
-                                    mime_type = mimetypes.guess_type(local_path)[0] or "image/png"
-                                    ext = os.path.splitext(local_path)[1].lstrip(".") or "png"
-                                    filename = f"keyframe_{idx + 1}.{ext}"
-                                    file_handle = open(local_path, "rb")
-                                    file_handles.append(file_handle)
-                                    files_payload.append(
-                                        ("input_reference", (filename, file_handle, mime_type))
+                            remote_refs: List[str] = []
+                            for raw_ref in image_refs:
+                                normalized_ref = self._normalize_remote_url(
+                                    raw_ref, base_url=None
+                                )
+                                if normalized_ref and str(normalized_ref).startswith(
+                                    ("http://", "https://")
+                                ):
+                                    remote_refs.append(str(normalized_ref))
+                                elif normalized_ref:
+                                    yield self._format_sse(
+                                        "backend_log",
+                                        f"Skip non-public image reference for Volcengine: {normalized_ref}",
                                     )
+
+                            model_lower = (target_model or "").lower()
+                            if remote_refs:
+                                # i2v models may accept keyframe roles; for other models keep a single image_url.
+                                if "i2v" in model_lower and len(remote_refs) >= 2:
+                                    content_payload.append(
+                                        {
+                                            "type": "image_url",
+                                            "role": "first_frame",
+                                            "image_url": {"url": remote_refs[0]},
+                                        }
+                                    )
+                                    content_payload.append(
+                                        {
+                                            "type": "image_url",
+                                            "role": "last_frame",
+                                            "image_url": {"url": remote_refs[-1]},
+                                        }
+                                    )
+                                else:
+                                    content_payload.append(
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {"url": remote_refs[0]},
+                                        }
+                                    )
+                            elif "i2v" in model_lower:
+                                raise RuntimeError(
+                                    "Volcengine i2v 模型需要可公网访问的 image_url 参数。"
+                                )
+
+                            request_payload = {
+                                "model": target_model,
+                                "content": content_payload,
+                            }
+                            yield self._format_sse(
+                                "backend_log",
+                                f"Volcengine request: model={target_model}, content_items={len(content_payload)}",
+                            )
+                            yield self._format_sse(
+                                "status", f"Submitting video task to {target_model}..."
+                            )
+
+                            volc_headers = dict(headers)
+                            volc_headers["Content-Type"] = "application/json"
+                            response = http_request(
+                                "POST",
+                                api_url,
+                                json=request_payload,
+                                headers=volc_headers,
+                                timeout=60000,
+                            )
+                        else:
+                            if not image_refs:
+                                yield self._format_sse(
+                                    "error", "未找到分镜参考图，请先生成分镜图后再试。"
+                                )
+                                return
+
+                            form_data = {
+                                "model": target_model,
+                                "prompt": f'{prompt}',
+                                "seconds": "15",
+                                "size": "1280x720",
+                                "watermark": False,
+                            }
+
+                            if mode == "keyframes":
+                                files_payload = []
+                                file_handles = []
+                                try:
+                                    for idx, img_path in enumerate(image_refs):
+                                        local_path = self._resolve_local_path(img_path) or img_path
+                                        if not local_path or not os.path.exists(local_path):
+                                            raise RuntimeError("无法读取关键帧参考图，请检查分镜图是否有效。")
+
+                                        mime_type = mimetypes.guess_type(local_path)[0] or "image/png"
+                                        ext = os.path.splitext(local_path)[1].lstrip(".") or "png"
+                                        filename = f"keyframe_{idx + 1}.{ext}"
+                                        file_handle = open(local_path, "rb")
+                                        file_handles.append(file_handle)
+                                        files_payload.append(
+                                            ("input_reference", (filename, file_handle, mime_type))
+                                        )
+
+                                    yield self._format_sse("status", f"Submitting video task to {target_model}...")
+                                    response = http_request(
+                                        "POST",
+                                        api_url,
+                                        data=form_data,
+                                        files=files_payload,
+                                        headers=headers,
+                                        timeout=60000
+                                    )
+                                finally:
+                                    for file_handle in file_handles:
+                                        try:
+                                            file_handle.close()
+                                        except Exception:
+                                            pass
+                            else:
+                                images_for_combine = [{ "data": image_refs, "direction": "horizontal"}]
+                                img_stream, mime_type = combine_image(images_for_combine, direction='vertical')
+                                ext = "png" if mime_type == "image/png" else "jpg"
+                                filename = f"template.{ext}"
+
+                                files_payload = {
+                                    "input_reference": (filename, img_stream, mime_type)
+                                }
 
                                 yield self._format_sse("status", f"Submitting video task to {target_model}...")
                                 response = http_request(
@@ -374,37 +536,25 @@ class AIEngine:
                                     headers=headers,
                                     timeout=60000
                                 )
-                            finally:
-                                for file_handle in file_handles:
-                                    try:
-                                        file_handle.close()
-                                    except Exception:
-                                        pass
-                        else:
-                            images_for_combine = [{ "data": image_refs, "direction": "horizontal"}]
-                            img_stream, mime_type = combine_image(images_for_combine, direction='vertical')
-                            ext = "png" if mime_type == "image/png" else "jpg"
-                            filename = f"template.{ext}"
 
-                            files_payload = {
-                                "input_reference": (filename, img_stream, mime_type)
-                            }
-
-                            yield self._format_sse("status", f"Submitting video task to {target_model}...")
-                            response = http_request(
-                                "POST",
-                                api_url,
-                                data=form_data,
-                                files=files_payload,
-                                headers=headers,
-                                timeout=60000
+                        if response.status_code < 200 or response.status_code >= 300:
+                            raise RuntimeError(
+                                f"Video Provider Error ({response.status_code}): {response.text}"
                             )
 
-                        if response.status_code != 200:
-                            raise RuntimeError(f"Video Provider Error: {response.text}")
-
-                        task_data = response.json()
-                        task_id = task_data.get("id") or task_data.get("detail", {}).get("id")
+                        task_data = response.json() if response.content else {}
+                        if not isinstance(task_data, dict):
+                            raise RuntimeError(
+                                f"Unexpected task create response: {str(task_data)}"
+                            )
+                        task_id = (
+                            task_data.get("id")
+                            or task_data.get("task_id")
+                            or task_data.get("detail", {}).get("id")
+                            or task_data.get("data", {}).get("id")
+                            or task_data.get("data", {}).get("task_id")
+                            or task_data.get("data", {}).get("task", {}).get("id")
+                        )
                 finally:
                     for temp_path in temp_files:
                         try:
@@ -412,10 +562,18 @@ class AIEngine:
                         except Exception:
                             pass
 
+                if should_poll_task:
                     if not task_id:
-                            raise RuntimeError(f"No task ID returned: {str(task_data)}")
+                        raise RuntimeError(f"No task ID returned: {str(task_data)}")
                     
-                    poll_url = f"{str(base_url).rstrip('/')}{endpoint}/{task_id}"
+                    if "{task_id}" in fetch_endpoint:
+                        poll_path = fetch_endpoint.replace("{task_id}", str(task_id))
+                    elif fetch_endpoint.endswith("/"):
+                        poll_path = f"{fetch_endpoint}{task_id}"
+                    else:
+                        poll_path = f"{fetch_endpoint}/{task_id}"
+                    poll_url = f"{str(base_url).rstrip('/')}{poll_path}"
+                    yield self._format_sse("backend_log", f"Video Poll URL: {poll_url}")
                     poll_headers = dict(headers)
                     poll_headers.pop("Content-Type", None)
                     poll_headers.update(download_headers())
@@ -435,21 +593,31 @@ class AIEngine:
                             logger.info(f"\n------------------------------------\n{log_msg}\n------------------------------------\n")
                             yield self._format_sse("backend_log", log_msg)
                             
-                            status = poll_data.get("status")
-                            
-                            if status == "completed":
+                            status = str(poll_data.get("status") or "").lower()
+                            completed_status = {"completed", "succeeded", "success", "done"}
+                            failed_status = {"failed", "error"}
+
+                            if status in completed_status:
                                 video_url = poll_data.get("video_url")
                                 if not video_url:
                                     video_url = poll_data.get("detail", {}).get("draft_info", {}).get("downloadable_url")
+                                if not video_url:
+                                    video_url = poll_data.get("url")
+                                if not video_url and isinstance(poll_data.get("data"), dict):
+                                    video_url = (
+                                        poll_data["data"].get("video_url")
+                                        or poll_data["data"].get("url")
+                                    )
                                 
                                 if not video_url:
-                                        raise RuntimeError("Video completed but URL not found")
+                                    raise RuntimeError("Video completed but URL not found")
                                 
                                 yield self._format_sse("status", "Downloading video...")
+                                data = poll_data
                                 image_url = video_url 
                                 ext = "mp4"
                                 break
-                            elif status == "failed":
+                            elif status in failed_status:
                                 raise RuntimeError(f"Video generation failed: {poll_data.get('fail_reason', 'Unknown')}")
                             else:
                                 yield self._format_sse("status", f"Generating video... ({status})")
@@ -462,7 +630,11 @@ class AIEngine:
 
             else:
                 target_model = model_name if model_name else "nano-banana"
-                endpoint = api_key_record.image_endpoint if api_key_record else "/images/generations"
+                endpoint = resolve_endpoint(
+                    platform,
+                    "image_endpoint",
+                    api_key_record.image_endpoint if api_key_record else None,
+                )
                 api_url = f"{str(base_url).rstrip('/')}{endpoint}"
                 ext = "png"
 
@@ -634,6 +806,9 @@ class AIEngine:
             if not client:
                 yield self._format_sse("error", "No API Key configured for text generation")
                 return
+            if not model:
+                yield self._format_sse("error", "No model selected for text generation")
+                return
             self.client = client
             self.model_name = model
 
@@ -750,6 +925,7 @@ class AIEngine:
                 for block in json_blocks:
                     try:
                         clean_block = re.sub(r"<\|.*?\|>", "", block)
+                        clean_block = strip_think_segments(clean_block)
                         data = json.loads(clean_block)
                         if isinstance(data, dict):
                             merged_data.update(data)
@@ -760,6 +936,7 @@ class AIEngine:
                     json_match = json.dumps(merged_data)
             else:
                 clean_text = re.sub(r"<\|.*?\|>", "", text)
+                clean_text = strip_think_segments(clean_text)
                 clean_text = clean_text.replace("```json", "").replace(
                     "```", ""
                 )
@@ -954,7 +1131,8 @@ class AIEngine:
         try:
             if not final_output_accumulator:
                 raise ValueError(f"[{tool_name}] 模型未返回任何内容！")
-            
+
+            final_output_accumulator = strip_think_segments(final_output_accumulator)
             yield self._format_sse("status", f"[{tool_name}] 内容格式化...")
 
             # short_video_storyboard_maker"
@@ -972,6 +1150,7 @@ class AIEngine:
                     parsed_data = json.loads(json_match)
                     if "storyboard" in parsed_data:
                         parsed_data["storyboard"] = self._inject_ids(parsed_data["storyboard"], "shot")
+                    parsed_data = sanitize_think_payload(parsed_data)
                     json_match = json.dumps(parsed_data)
                 except:
                     pass
@@ -1029,6 +1208,7 @@ class AIEngine:
                         parsed_data["scenes"] = self._inject_ids(parsed_data["scenes"], "scene")
                     if "storyboard" in parsed_data:
                         parsed_data["storyboard"] = self._inject_ids(parsed_data["storyboard"], "shot")
+                    parsed_data = sanitize_think_payload(parsed_data)
                     json_match = json.dumps(parsed_data)
                 except:
                     pass
@@ -1039,7 +1219,7 @@ class AIEngine:
             
             # other tools
             else:
-                yield self._format_sse("text_finish", {"text": final_output_accumulator}) 
+                yield self._format_sse("text_finish", {"text": strip_think_segments(final_output_accumulator)})
 
         except Exception as e:
             yield self._format_sse("error", f"{str(e)}")
@@ -1048,7 +1228,8 @@ class AIEngine:
         try:
             if not self.episode:
                 raise ValueError("💾 无法保存剧集，剧本不存在.")
-            
+
+            value = sanitize_think_payload(value)
             current_config = self.episode.ai_config if self.episode.ai_config else {}
             key_path = key.split(".")
 

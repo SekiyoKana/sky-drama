@@ -105,9 +105,21 @@ const enUS = {
       editConnection: 'Edit Connection',
       newConnection: 'New Connection',
       platformType: 'Platform',
+      platforms: {
+        openai: 'OpenAI Compatible',
+        ollama: 'Ollama',
+        volcengine: 'Volcengine Ark'
+      },
+      platformHints: {
+        openai: 'Use for OpenAI and most OpenAI-compatible providers.',
+        ollama: 'Uses Ollama standard API. Supports local or cloud host URL (example: http://127.0.0.1:11434/api).',
+        volcengine: 'Default integration for Volcengine Ark models via OpenAI-compatible calls.'
+      },
       connectionName: 'Connection Name',
       baseUrl: 'Base URL',
       apiKey: 'API Key',
+      optional: 'optional',
+      apiKeyOptionalPlaceholder: 'Usually optional for local Ollama',
       keepEmptyHint: '(leave empty to keep current key)',
       endpointOverrides: 'Endpoint Overrides',
       chat: 'Chat',
@@ -139,6 +151,7 @@ const enUS = {
         deleted: 'Key destroyed',
         deleteFailed: 'Delete failed',
         connectionSuccess: 'Connection success! Available models: {models}...',
+        connectionSuccessNoModels: 'Connection success! No model list returned, please confirm the model name manually.',
         connectionFailed: 'Connection failed: {detail}',
         networkError: 'Network error'
       }
@@ -284,6 +297,8 @@ const enUS = {
       targetModel: 'Target Model',
       fetching: 'Fetching...',
       autoDefault: 'Auto / Default',
+      manualModelPlaceholder: 'Enter model name manually (e.g. llama3.1:8b / ep-xxxx)',
+      manualModelHint: 'No model list returned by this provider. You can enter the model name directly.',
       ready: 'Ready',
       voiceLanguage: 'Dialogue Language',
       voiceLanguagePlaceholder: 'Unspecified',

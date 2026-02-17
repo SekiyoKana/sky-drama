@@ -51,6 +51,53 @@
    <img src="docs/05_api_setting.gif" style="margin: 0 auto" width="600" />
 </div>
 
+#### API 平台扩展（OpenAI / Ollama / 火山引擎）
+
+- `ApiMatrixTab` 新增/编辑连接时，`平台类型` 已改为下拉选框，支持：
+  - `OpenAI Compatible`
+  - `Ollama`
+  - `Volcengine Ark (火山引擎)`
+- 选择 `Ollama` 时：
+  - 默认 `Base URL` 为 `http://127.0.0.1:11434/api`
+  - 默认文本接口为 `POST /chat`（即完整地址 `/api/chat`）
+  - 连接测试改为 `GET /tags`（即完整地址 `/api/tags`）
+  - 支持配置为本机 Ollama，也支持替换为云服务器提供的 Ollama 服务地址
+- 选择 `火山引擎` 时：
+  - 默认 `Base URL` 为 `https://ark.cn-beijing.volces.com/api/v3`
+  - 默认文本接口为 `POST /chat/completions`
+  - 默认视频任务创建接口为 `POST /contents/generations/tasks`
+  - 默认视频任务查询接口为 `GET /contents/generations/tasks/{task_id}`
+  - 按火山方舟（Ark）OpenAI 兼容方式接入；模型参数应填写对应 `Endpoint ID`
+  - 若连接测试未返回模型列表，可在工作台模型配置中手动输入模型 ID（如 `ep-xxxx`）
+
+参考文档（官方）：
+- Ollama API: https://docs.ollama.com/api
+- Ollama Authentication: https://docs.ollama.com/api#authentication
+- 火山引擎方舟模型推理: https://www.volcengine.com/docs/82379/1541594
+- 火山引擎方舟 Chat Completions API: https://www.volcengine.com/docs/82379/1330310
+
+#### 后端平台配置集中管理
+
+- 平台默认配置与别名已集中到：
+  - `apps/backend/app/core/providers/openai.py`
+  - `apps/backend/app/core/providers/ollama.py`
+  - `apps/backend/app/core/providers/volcengine.py`
+- 平台注册与路由在：
+  - `apps/backend/app/core/providers/registry.py`
+- 兼容层保留在：
+  - `apps/backend/app/core/provider_platform.py`
+- 新增平台时，建议新建一个 provider 类并在 registry 注册，避免将平台分支逻辑散落到业务文件中。
+
+#### 前端平台配置集中管理
+
+- 前端平台抽象与默认值已集中到：
+  - `apps/frontend/src/platforms/openai.ts`
+  - `apps/frontend/src/platforms/ollama.ts`
+  - `apps/frontend/src/platforms/volcengine.ts`
+- 前端平台注册表在：
+  - `apps/frontend/src/platforms/registry.ts`
+- 组件（如 `ApiMatrixTab`）统一通过 registry 读取平台默认配置、别名归一化与端点规则，避免在 Vue 文件中硬编码平台分支。
+
 ### 3. 自定义您的视觉风格
 上传参考图或使用预设，定义项目的整体视觉基调（如：赛博朋克、水墨风、皮克斯风格）。
 <div align="center">
@@ -284,8 +331,8 @@ class MyProvider(Base):
 ## 🗺️ 路线图
 
 * [√] **国际化I18N**: 中、英、日三语支持。
-* [ ] **本地模型集成**: 支持通过 Ollama 调用本地大语言模型。
-* [ ] **高级视频生成**: 支持更多视频模型的首尾帧控制、多图参考生成等高级功能。
+* [√] **本地模型集成**: 支持通过 Ollama 调用本地大语言模型，支持火山方舟平台(seedance2.0)。
+* [·] **高级视频生成**: 支持更多视频模型的首尾帧控制、多图参考生成等高级功能。
 * [ ] **时间轴增强**: 支持在时间轴剪辑中添加过渡动画效果。
 * [√] **深度日志**: 提供更详细的 Console 日志和导演工作台 (Director Workbench) 执行记录，便于调试与回溯。
 * [ ] **工程管理**: 支持工程文件的完整导出、迁移及备份。

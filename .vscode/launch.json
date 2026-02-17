@@ -18,6 +18,7 @@
       "env": {
         "PYTHONPATH": "${workspaceFolder}/apps/backend"
       },
+      "console": "integratedTerminal",
       "jinja": true,
       "justMyCode": true,
       "subProcess": false

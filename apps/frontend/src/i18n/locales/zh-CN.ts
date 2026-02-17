@@ -105,9 +105,21 @@ const zhCN = {
       editConnection: '编辑连接',
       newConnection: '新建连接',
       platformType: '平台类型',
+      platforms: {
+        openai: 'OpenAI 兼容',
+        ollama: 'Ollama',
+        volcengine: '火山引擎'
+      },
+      platformHints: {
+        openai: '适用于 OpenAI 及多数 OpenAI 兼容服务。',
+        ollama: '使用 Ollama 标准 API。支持本机或云服务器地址（示例：http://127.0.0.1:11434/api）。',
+        volcengine: '默认接入火山方舟（Ark）大模型服务，使用 OpenAI 兼容调用方式。'
+      },
       connectionName: '连接名称',
       baseUrl: '接口地址 (Base URL)',
       apiKey: '密钥 (API Key)',
+      optional: '可选',
+      apiKeyOptionalPlaceholder: '本地 Ollama 通常可留空',
       keepEmptyHint: '(留空不修改)',
       endpointOverrides: '接口重写 (Endpoint Overrides)',
       chat: '对话 Chat',
@@ -139,6 +151,7 @@ const zhCN = {
         deleted: '密钥已销毁',
         deleteFailed: '删除失败',
         connectionSuccess: '联通成功！可用模型: {models}...',
+        connectionSuccessNoModels: '联通成功！当前服务未返回模型列表，请手动确认模型名。',
         connectionFailed: '连接失败: {detail}',
         networkError: '网络错误'
       }
@@ -284,6 +297,8 @@ const zhCN = {
       targetModel: '目标模型',
       fetching: '获取中...',
       autoDefault: '自动 / 默认',
+      manualModelPlaceholder: '手动输入模型名（例如：llama3.1:8b / ep-xxxx）',
+      manualModelHint: '当前服务未返回模型列表，可直接手动填写模型名。',
       ready: '就绪',
       voiceLanguage: '台词语言',
       voiceLanguagePlaceholder: '不指定',

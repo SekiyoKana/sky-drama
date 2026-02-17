@@ -15,6 +15,7 @@ import { useMessage } from '@/utils/useMessage'
 import { useConfirm } from '@/utils/useConfirm'
 import { startOnboardingTour } from '@/utils/tour'
 import { debugLogger } from '@/utils/debugLogger'
+import { sanitizeThinkPayload, stripThinkTags } from '@/utils/thinkFilter'
 
 import PreviewModule from './components/PreviewModule.vue'
 import AiDirectorModule from './components/AiDirectorModule.vue'
@@ -201,7 +202,7 @@ const initData = async () => {
 
       if (currentEp.ai_config) {
       if (currentEp.ai_config.generated_script) {
-        scriptData.value = currentEp.ai_config.generated_script
+        scriptData.value = sanitizeThinkPayload(currentEp.ai_config.generated_script)
       }
       // Load Video Library
       if (currentEp.ai_config.video_library) {
@@ -228,7 +229,7 @@ const persistState = async (silent = true) => {
   try {
     const newConfig = {
       ...(episode.value.ai_config || {}),
-      generated_script: scriptData.value,
+      generated_script: sanitizeThinkPayload(scriptData.value),
       video_library: videoLibrary.value,
       timeline_data: timelineTracks.value
     }
@@ -298,9 +299,9 @@ const fillPrompts = async (script: any) => {
 
     try {
       let rawText = ''
-      if (task.category === 'character') rawText = `[Name]: ${task.item.name}, [Desc]: ${task.item.description}`
-      else if (task.category === 'scene') rawText = `[Location]: ${task.item.location_name}, [Mood]: ${task.item.mood}`
-      else if (task.category === 'storyboard') rawText = `[Action]: ${task.item.action}, [Shot]: ${task.item.shot_type}`
+      if (task.category === 'character') rawText = `[Name]: ${stripThinkTags(String(task.item.name || ''))}, [Desc]: ${stripThinkTags(String(task.item.description || ''))}`
+      else if (task.category === 'scene') rawText = `[Location]: ${stripThinkTags(String(task.item.location_name || ''))}, [Mood]: ${stripThinkTags(String(task.item.mood || ''))}`
+      else if (task.category === 'storyboard') rawText = `[Action]: ${stripThinkTags(String(task.item.action || ''))}, [Shot]: ${stripThinkTags(String(task.item.shot_type || ''))}`
 
       // Push progress update to the SAME log entry
       refinementLog.content += t('workbench.logs.refiningItem', {
@@ -339,11 +340,11 @@ const fillPrompts = async (script: any) => {
                   // 如果 finish 包里还有残留文本，追加上去
                   task.item._tempPrompt += msg.payload
                 }
-                task.item.visual_prompt = task.item._tempPrompt
+                task.item.visual_prompt = stripThinkTags(task.item._tempPrompt)
                 delete task.item._tempPrompt
               } else if (msg.payload && typeof msg.payload === 'string') {
                 // 如果没有流式内容，说明是一次性返回的
-                task.item.visual_prompt = msg.payload
+                task.item.visual_prompt = stripThinkTags(msg.payload)
               }
 
               // Save progress incrementally
@@ -383,6 +384,8 @@ const fillPrompts = async (script: any) => {
 // --- Streaming Logic ---
 const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
   if (!data.prompt) return message.warning(t('workbench.messages.enterPrompt'))
+  const cleanPrompt = stripThinkTags(data.prompt)
+  if (!cleanPrompt) return message.warning(t('workbench.messages.enterPrompt'))
 
   // Confirm overwrite if data exists
   const hasContent = scriptData.value && (
@@ -422,12 +425,12 @@ const handleGenerateStream = async (data: { prompt: string, tags: any }) => {
       projectId,
       episodeId,
       mode: data.tags?.mode || 'script',
-      promptPreview: data.prompt.slice(0, 160)
+      promptPreview: cleanPrompt.slice(0, 160)
     })
 
     await aiApi.skillsStream({
       projectId: projectId, episodeId: episodeId,
-      prompt: data.prompt,
+      prompt: cleanPrompt,
       skill: skill,
       type: type,
       data: { trace_id: traceId }
@@ -532,7 +535,7 @@ const handleStreamMessage = (msg: any) => {
     case 'finish':
       try {
         const scriptJson = JSON.parse(msg.payload.json)
-        scriptData.value = scriptJson
+        scriptData.value = sanitizeThinkPayload(scriptJson)
         scriptReadyHighlight.value = true
         // Backend already saved, no need to persistState again
       } catch (e) {

@@ -105,9 +105,21 @@ const jaJP = {
       editConnection: '接続を編集',
       newConnection: '新規接続',
       platformType: 'プラットフォーム',
+      platforms: {
+        openai: 'OpenAI 互換',
+        ollama: 'Ollama',
+        volcengine: '火山引擎 (Ark)'
+      },
+      platformHints: {
+        openai: 'OpenAI および多くの OpenAI 互換サービス向け。',
+        ollama: 'Ollama 標準 API を使用します。ローカル/クラウドのホスト URL に対応します（例: http://127.0.0.1:11434/api）。',
+        volcengine: 'ByteDance 火山方舟 (Ark) モデルへ OpenAI 互換方式で接続します。'
+      },
       connectionName: '接続名',
       baseUrl: 'Base URL',
       apiKey: 'API キー',
+      optional: '任意',
+      apiKeyOptionalPlaceholder: 'ローカル Ollama では通常不要',
       keepEmptyHint: '（空欄なら変更しない）',
       endpointOverrides: 'エンドポイント上書き',
       chat: 'チャット',
@@ -139,6 +151,7 @@ const jaJP = {
         deleted: 'キーを削除しました',
         deleteFailed: '削除に失敗しました',
         connectionSuccess: '接続成功！利用可能モデル: {models}...',
+        connectionSuccessNoModels: '接続成功。モデル一覧は返されませんでした。モデル名を手動で確認してください。',
         connectionFailed: '接続失敗: {detail}',
         networkError: 'ネットワークエラー'
       }
@@ -284,6 +297,8 @@ const jaJP = {
       targetModel: '対象モデル',
       fetching: '取得中...',
       autoDefault: '自動 / デフォルト',
+      manualModelPlaceholder: 'モデル名を手動入力（例: llama3.1:8b / ep-xxxx）',
+      manualModelHint: 'このプロバイダーはモデル一覧を返しません。モデル名を直接入力できます。',
       ready: '準備完了',
       voiceLanguage: 'セリフ言語',
       voiceLanguagePlaceholder: '指定なし',

@@ -10,6 +10,7 @@ import { useConfirm } from '@/utils/useConfirm'
 import { debugLogger } from '@/utils/debugLogger'
 import { resolveImageUrl } from '@/utils/assets'
 import { safeRandomUUID } from '@/utils/id'
+import { sanitizeThinkPayload, stripThinkTags } from '@/utils/thinkFilter'
 import BookPreview from './BookPreview.vue'
 import CharacterCreateModal from './CharacterCreateModal.vue'
 import VideoPreviewModal from './VideoPreviewModal.vue'
@@ -205,12 +206,13 @@ const handleDeleteItem = async (type: 'chars' | 'scenes' | 'board', index: numbe
 const handleUpdateItem = async (itemId: string, updates: any) => {
     // Optimistic local update
     try {
+        const sanitizedUpdates = sanitizeThinkPayload(updates)
         const root = props.data.generated_script || props.data
         const findAndUpdate = (list: any[]) => {
             if (!list) return false
             const item = list.find((i: any) => i.id === itemId)
             if (item) {
-                Object.assign(item, updates)
+                Object.assign(item, sanitizedUpdates)
                 return true
             }
             return false
@@ -220,7 +222,7 @@ const handleUpdateItem = async (itemId: string, updates: any) => {
         await aiApi.updateScriptItem({
             episode_id: Number(route.params.episodeId),
             item_id: itemId,
-            updates: updates
+            updates: sanitizedUpdates
         })
     } catch (e) {
         console.error("Update failed", e)
@@ -240,9 +242,10 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
 
   // If there are updates (name/desc), save them first
   if (updates && item.id) {
-      await handleUpdateItem(item.id, updates)
+      const sanitizedUpdates = sanitizeThinkPayload(updates)
+      await handleUpdateItem(item.id, sanitizedUpdates)
       // Update local item reference to reflect changes immediately in UI
-      Object.assign(item, updates)
+      Object.assign(item, sanitizedUpdates)
   }
 
   const category = activeTab.value === 'chars' ? 'character' : (activeTab.value === 'scenes' ? 'scene' : 'storyboard')
@@ -258,23 +261,23 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
   message.info(t('workbench.scriptEditor.messages.startGenerating', { type: typeLabel }))
 
   // Construct prompt
-  let finalPrompt = item.visual_prompt || item.description || item.action || t('workbench.scriptEditor.defaults.noPrompt')
+  let finalPrompt = stripThinkTags(item.visual_prompt || item.description || item.action || t('workbench.scriptEditor.defaults.noPrompt'))
   if (type === 'text') {
       // Prompt Refinement Logic
       const parts = []
       
       // 1. Original Context
       if (activeTab.value === 'chars') {
-          parts.push(`[Character Info]\nName: ${item.name}\nDescription: ${item.description}`)
+          parts.push(`[Character Info]\nName: ${stripThinkTags(String(item.name || ''))}\nDescription: ${stripThinkTags(String(item.description || ''))}`)
       } else if (activeTab.value === 'scenes') {
-          parts.push(`[Scene Info]\nLocation: ${item.location_name}\nMood: ${item.mood}`)
+          parts.push(`[Scene Info]\nLocation: ${stripThinkTags(String(item.location_name || ''))}\nMood: ${stripThinkTags(String(item.mood || ''))}`)
       } else if (activeTab.value === 'board') {
-          parts.push(`[Shot Info]\nAction: ${item.action}\nType: ${item.shot_type}`)
+          parts.push(`[Shot Info]\nAction: ${stripThinkTags(String(item.action || ''))}\nType: ${stripThinkTags(String(item.shot_type || ''))}`)
       }
       
       // 2. Current Visual Prompt (if exists)
       if (item.visual_prompt) {
-          parts.push(`[Current Visual Prompt]\n${item.visual_prompt}`)
+          parts.push(`[Current Visual Prompt]\n${stripThinkTags(String(item.visual_prompt || ''))}`)
       }
       
       // 3. User Instruction (or default)
@@ -368,10 +371,10 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
                   } 
                   
                   if (msg.type === 'message' && type === 'text') {
-                       item.visual_prompt = msg.payload
+                       item.visual_prompt = stripThinkTags(String(msg.payload ?? ''))
                   }
                   if (msg.type === 'finish' && type === 'text' && typeof msg.payload === 'string') {
-                       item.visual_prompt = msg.payload
+                       item.visual_prompt = stripThinkTags(msg.payload)
                   }
 
                   message.success(t('workbench.scriptEditor.messages.generateSuccess'))
@@ -389,6 +392,7 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
                   } else if (msg.payload?.text) {
                       refinedPrompt = msg.payload.text
                   }
+                  refinedPrompt = stripThinkTags(refinedPrompt)
 
                   if (refinedPrompt) {
                       item.visual_prompt = refinedPrompt

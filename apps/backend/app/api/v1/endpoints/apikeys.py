@@ -6,8 +6,52 @@ from app.api import deps
 from app.models.apikey import ApiKey
 from app.models.user import User
 from app.schemas.apikey import ApiKeyCreate, ApiKeyOut, ApiKeyUpdate
+from app.core.provider_platform import (
+    normalize_platform,
+    resolve_base_url,
+    resolve_endpoint,
+    requires_api_key,
+)
 
 router = APIRouter()
+
+
+def _mask_key(raw_key: str) -> str:
+    key = str(raw_key or "")
+    if len(key) >= 4:
+        return "sk-****" + key[-4:]
+    return "sk-****"
+
+
+def _normalize_key_payload(
+    platform: str,
+    base_url: str,
+    text_endpoint: str,
+    image_endpoint: str,
+    video_endpoint: str,
+    video_fetch_endpoint: str,
+    audio_endpoint: str,
+):
+    normalized_platform = normalize_platform(platform)
+    return {
+        "platform": normalized_platform,
+        "base_url": resolve_base_url(normalized_platform, base_url),
+        "text_endpoint": resolve_endpoint(
+            normalized_platform, "text_endpoint", text_endpoint
+        ),
+        "image_endpoint": resolve_endpoint(
+            normalized_platform, "image_endpoint", image_endpoint
+        ),
+        "video_endpoint": resolve_endpoint(
+            normalized_platform, "video_endpoint", video_endpoint
+        ),
+        "video_fetch_endpoint": resolve_endpoint(
+            normalized_platform, "video_fetch_endpoint", video_fetch_endpoint
+        ),
+        "audio_endpoint": resolve_endpoint(
+            normalized_platform, "audio_endpoint", audio_endpoint
+        ),
+    }
 
 @router.get("/", response_model=List[ApiKeyOut])
 def read_apikeys(
@@ -22,11 +66,7 @@ def read_apikeys(
     # 手动处理脱敏逻辑
     results = []
     for k in keys:
-        # 明文存储，直接脱敏
-        if k.encrypted_key and len(str(k.encrypted_key)) >= 4:
-            masked = "sk-****" + str(k.encrypted_key)[-4:]
-        else:
-            masked = "sk-****"
+        masked = _mask_key(k.encrypted_key)
             
         results.append(ApiKeyOut(
             id=k.id,
@@ -53,17 +93,30 @@ def create_apikey(
     # 🔒 不再加密，直接存储明文
     # encrypted = encrypt_data(key_in.key)
     
-    new_key = ApiKey(
-        user_id=current_user.id,
+    normalized_payload = _normalize_key_payload(
         platform=key_in.platform,
-        name=key_in.name,
         base_url=key_in.base_url,
-        encrypted_key=key_in.key, # 存明文
         text_endpoint=key_in.text_endpoint,
         image_endpoint=key_in.image_endpoint,
         video_endpoint=key_in.video_endpoint,
         video_fetch_endpoint=key_in.video_fetch_endpoint,
-        audio_endpoint=key_in.audio_endpoint
+        audio_endpoint=key_in.audio_endpoint,
+    )
+    raw_key = key_in.key or ""
+    if requires_api_key(normalized_payload["platform"]) and not raw_key:
+        raise HTTPException(status_code=400, detail="API Key is required for this platform")
+
+    new_key = ApiKey(
+        user_id=current_user.id,
+        platform=normalized_payload["platform"],
+        name=key_in.name,
+        base_url=normalized_payload["base_url"],
+        encrypted_key=raw_key, # 存明文
+        text_endpoint=normalized_payload["text_endpoint"],
+        image_endpoint=normalized_payload["image_endpoint"],
+        video_endpoint=normalized_payload["video_endpoint"],
+        video_fetch_endpoint=normalized_payload["video_fetch_endpoint"],
+        audio_endpoint=normalized_payload["audio_endpoint"],
     )
     db.add(new_key)
     db.commit()
@@ -79,8 +132,8 @@ def create_apikey(
         video_endpoint=new_key.video_endpoint,
         video_fetch_endpoint=new_key.video_fetch_endpoint,
         audio_endpoint=new_key.audio_endpoint,
-        masked_key="sk-****" + key_in.key[-4:],
-        key=key_in.key # 返回完整 Key
+        masked_key=_mask_key(raw_key),
+        key=raw_key # 返回完整 Key
     )
 
 @router.put("/{id}", response_model=ApiKeyOut)
@@ -95,25 +148,34 @@ def update_apikey(
     if not key:
         raise HTTPException(status_code=404, detail="Key not found")
         
-    if key_in.key:
+    if key_in.key not in (None, ""):
         key.encrypted_key = key_in.key # 存明文
-        
-    key.platform = key_in.platform
+
+    normalized_payload = _normalize_key_payload(
+        platform=key_in.platform,
+        base_url=key_in.base_url,
+        text_endpoint=key_in.text_endpoint,
+        image_endpoint=key_in.image_endpoint,
+        video_endpoint=key_in.video_endpoint,
+        video_fetch_endpoint=key_in.video_fetch_endpoint,
+        audio_endpoint=key_in.audio_endpoint,
+    )
+
+    key.platform = normalized_payload["platform"]
     key.name = key_in.name
-    key.base_url = key_in.base_url
-    key.text_endpoint = key_in.text_endpoint
-    key.image_endpoint = key_in.image_endpoint
-    key.video_endpoint = key_in.video_endpoint
-    key.video_fetch_endpoint = key_in.video_fetch_endpoint
-    key.audio_endpoint = key_in.audio_endpoint
+    key.base_url = normalized_payload["base_url"]
+    key.text_endpoint = normalized_payload["text_endpoint"]
+    key.image_endpoint = normalized_payload["image_endpoint"]
+    key.video_endpoint = normalized_payload["video_endpoint"]
+    key.video_fetch_endpoint = normalized_payload["video_fetch_endpoint"]
+    key.audio_endpoint = normalized_payload["audio_endpoint"]
+    if requires_api_key(key.platform) and not key.encrypted_key:
+        raise HTTPException(status_code=400, detail="API Key is required for this platform")
     
     db.commit()
     db.refresh(key)
     
-    if key_in.key and len(key_in.key) >= 4:
-        masked = "sk-****" + key_in.key[-4:]
-    else:
-        masked = "sk-****"
+    masked = _mask_key(key.encrypted_key)
     
     return ApiKeyOut(
         id=key.id,

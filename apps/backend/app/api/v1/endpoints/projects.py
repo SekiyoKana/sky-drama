@@ -20,6 +20,7 @@ from app.models.project import Project, Episode
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectOut, EpisodeOut, EpisodeCreate, EpisodeUpdate
 from app.core.config import settings
+from app.utils.think_filter import sanitize_think_payload
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,8 @@ def update_episode(
         # 3. 动态更新字段
         # exclude_unset=True 确保只更新前端传过来的字段 (比如只传了 ai_config，就不动 title)
         update_data = episode_in.dict(exclude_unset=True)
+        if "ai_config" in update_data:
+            update_data["ai_config"] = sanitize_think_payload(update_data["ai_config"])
         for field, value in update_data.items():
             setattr(episode, field, value)
 
@@ -722,4 +725,3 @@ def export_episode_video(
         cleanup_work_dir()
         logger.info(f"Export error: {e}")
         raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
-

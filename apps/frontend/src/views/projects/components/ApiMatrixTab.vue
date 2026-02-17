@@ -1,186 +1,260 @@
 <script setup lang="ts">
-    import { ref, onMounted, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-    import { Trash2, Key, Plus, Save, Activity, XCircle } from 'lucide-vue-next'
-    import { apiKeyApi, aiApi } from '@/api'
-    import NeuButton from '@/components/base/NeuButton.vue'
+import { Trash2, Key, Plus, Save, Activity, XCircle } from 'lucide-vue-next'
+import { apiKeyApi, aiApi } from '@/api'
+import NeuButton from '@/components/base/NeuButton.vue'
+import {
+  PLATFORM_TYPES,
+  createPlatformConfig,
+  getPlatformDefaults,
+  mergePlatformConfig,
+  normalizePlatform,
+  platformRequiresApiKey,
+  resolvePlatformBaseUrl,
+  resolvePlatformEndpoint
+} from '@/platforms'
 import { useConfirm } from '@/utils/useConfirm'
 import { useMessage } from '@/utils/useMessage'
 import { startOnboardingTour } from '@/utils/tour'
 import loginImg from '@/assets/login.png'
+
+const defaultPlatformConfig = createPlatformConfig('openai')
 
 const message = useMessage()
 const confirmDialog = useConfirm()
 const { t } = useI18n()
 const keys = ref<any[]>([])
 const loading = ref(false)
-const testingId = ref<number | null>(null) // 当前正在测试的 ID
-const isCreating = ref(false) // 👈 控制弹框
-const editingId = ref<number | null>(null) // 👈 编辑模式 ID
+const testingId = ref<number | null>(null)
+const isCreating = ref(false)
+const editingId = ref<number | null>(null)
 
 const form = reactive({
-  platform: 'openai',
+  platform: defaultPlatformConfig.platform,
   name: '',
   key: '',
-  base_url: '',
-  text_endpoint: '/chat/completions',
-  image_endpoint: '/images/generations',
-  video_endpoint: '/videos',
-  video_fetch_endpoint: '/videos/{task_id}',
-  audio_endpoint: ''
+  base_url: defaultPlatformConfig.base_url,
+  text_endpoint: defaultPlatformConfig.text_endpoint,
+  image_endpoint: defaultPlatformConfig.image_endpoint,
+  video_endpoint: defaultPlatformConfig.video_endpoint,
+  video_fetch_endpoint: defaultPlatformConfig.video_fetch_endpoint,
+  audio_endpoint: defaultPlatformConfig.audio_endpoint
 })
 
-    
-    const fetchKeys = async () => {
-      loading.value = true
-      try {
-        const res: any = await apiKeyApi.list()
-        keys.value = res
-      } catch (e) {
-        message.error(t('projects.api.messages.loadFailed'))
-      } finally {
-        loading.value = false
-      }
-    }
-    
-    // 🌐 BaseURL 校验逻辑
-    const validateUrl = (url: string) => {
-      if (!url) return true // 允许为空（使用默认）
-      const pattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/
-      return pattern.test(url)
-    }
-    
+const platformOptions = computed(() =>
+  PLATFORM_TYPES.map((platform) => ({
+    value: platform,
+    label: t(`projects.api.platforms.${platform}`)
+  }))
+)
+
+const normalizedPlatform = computed(() => normalizePlatform(form.platform))
+const isOllama = computed(() => normalizedPlatform.value === 'ollama')
+const keyRequired = computed(() => platformRequiresApiKey(normalizedPlatform.value))
+const currentPreset = computed(() => getPlatformDefaults(normalizedPlatform.value))
+const baseUrlPlaceholder = computed(() => currentPreset.value.base_url)
+const textEndpointPlaceholder = computed(
+  () => currentPreset.value.text_endpoint || '/chat/completions'
+)
+const imageEndpointPlaceholder = computed(
+  () => currentPreset.value.image_endpoint || '/images/generations'
+)
+const videoEndpointPlaceholder = computed(() => currentPreset.value.video_endpoint || '/videos')
+const videoFetchEndpointPlaceholder = computed(
+  () => currentPreset.value.video_fetch_endpoint || '/videos/{task_id}'
+)
+const apiKeyPlaceholder = computed(() => {
+  if (isOllama.value) return t('projects.api.apiKeyOptionalPlaceholder')
+  return 'sk-...'
+})
+const platformHint = computed(() => {
+  return t(`projects.api.platformHints.${normalizedPlatform.value}`)
+})
+
+const displayPlatform = (platform: string) => {
+  const normalized = normalizePlatform(platform)
+  return t(`projects.api.platforms.${normalized}`)
+}
+
+const applyPlatformConfig = (
+  config: ReturnType<typeof createPlatformConfig> | ReturnType<typeof mergePlatformConfig>
+) => {
+  form.platform = config.platform
+  form.base_url = config.base_url
+  form.text_endpoint = config.text_endpoint
+  form.image_endpoint = config.image_endpoint
+  form.video_endpoint = config.video_endpoint
+  form.video_fetch_endpoint = config.video_fetch_endpoint
+  form.audio_endpoint = config.audio_endpoint
+}
+
+const applyPlatformPreset = (platformValue: string) => {
+  applyPlatformConfig(createPlatformConfig(platformValue))
+}
+
+const openCreate = () => {
+  editingId.value = null
+  form.name = ''
+  form.key = ''
+  applyPlatformPreset('openai')
+  isCreating.value = true
+}
+
+const fetchKeys = async () => {
+  loading.value = true
+  try {
+    const res: any = await apiKeyApi.list()
+    keys.value = res
+  } catch (e) {
+    message.error(t('projects.api.messages.loadFailed'))
+  } finally {
+    loading.value = false
+  }
+}
+
+const validateUrl = (url: string) => {
+  if (!url) return true
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch (e) {
+    return false
+  }
+}
+
 const addKey = async () => {
-  if (!form.name) { // Key is optional when updating
+  if (!form.name) {
     return message.warning(t('projects.api.messages.fillKeyInfo'))
   }
-  // Only check key if creating new
-  if (!editingId.value && !form.key) {
-      return message.warning(t('projects.api.messages.fillKey'))
+  if (!editingId.value && keyRequired.value && !form.key) {
+    return message.warning(t('projects.api.messages.fillKey'))
   }
-  
   if (!validateUrl(form.base_url)) {
     return message.error(t('projects.api.messages.badBaseUrl'))
   }
 
   try {
-    let res: any;
+    let res: any
+    const normalized = normalizePlatform(form.platform)
+    const payload = {
+      platform: normalized,
+      name: form.name,
+      base_url: resolvePlatformBaseUrl(normalized, form.base_url),
+      text_endpoint: resolvePlatformEndpoint(normalized, 'text_endpoint', form.text_endpoint),
+      image_endpoint: resolvePlatformEndpoint(normalized, 'image_endpoint', form.image_endpoint),
+      video_endpoint: resolvePlatformEndpoint(normalized, 'video_endpoint', form.video_endpoint),
+      video_fetch_endpoint: resolvePlatformEndpoint(
+        normalized,
+        'video_fetch_endpoint',
+        form.video_fetch_endpoint
+      ),
+      audio_endpoint: resolvePlatformEndpoint(normalized, 'audio_endpoint', form.audio_endpoint)
+    }
+
     if (editingId.value) {
-        res = await apiKeyApi.update(editingId.value, {
-          platform: form.platform,
-          name: form.name,
-          key: form.key, // might be empty
-          base_url: form.base_url,
-          text_endpoint: form.text_endpoint,
-          image_endpoint: form.image_endpoint,
-          video_endpoint: form.video_endpoint,
-          video_fetch_endpoint: form.video_fetch_endpoint,
-          audio_endpoint: form.audio_endpoint
-        })
-        message.success(t('projects.api.messages.updated'))
+      res = await apiKeyApi.update(editingId.value, {
+        ...payload,
+        key: form.key,
+      })
+      message.success(t('projects.api.messages.updated'))
     } else {
-        res = await apiKeyApi.create({
-          platform: form.platform,
-          name: form.name,
-          key: form.key,
-          base_url: form.base_url,
-          text_endpoint: form.text_endpoint,
-          image_endpoint: form.image_endpoint,
-          video_endpoint: form.video_endpoint,
-          video_fetch_endpoint: form.video_fetch_endpoint,
-          audio_endpoint: form.audio_endpoint
-        })
-        message.success(t('projects.api.messages.saved'))
+      res = await apiKeyApi.create({
+        ...payload,
+        key: form.key || undefined,
+      })
+      message.success(t('projects.api.messages.saved'))
     }
 
-    // Reset and refresh
-    cancelCreate() // Close modal and reset form
+    cancelCreate()
     await fetchKeys()
-    isCreating.value = false // 👈 关闭弹框
-    editingId.value = null
 
-    // ✨ 自动触发一次连接测试
     if (res && res.id) {
-        testConnection(res.id)
+      testConnection(res.id)
     }
-
   } catch (e) {
-
     message.error(t('projects.api.messages.saveFailed'))
   }
 }
 
 const cancelCreate = () => {
-    isCreating.value = false
-    editingId.value = null
-    form.key = ''
-    form.name = ''
-    form.base_url = ''
+  isCreating.value = false
+  editingId.value = null
+  form.name = ''
+  form.key = ''
+  applyPlatformPreset('openai')
 }
 
-    
 const editKey = (k: any) => {
-    editingId.value = k.id
-    form.platform = k.platform
-    form.name = k.name
-    form.key = k.key || k.masked_key || '' 
-    form.base_url = k.base_url
-    form.text_endpoint = k.text_endpoint || '/chat/completions'
-    form.image_endpoint = k.image_endpoint || '/images/generations'
-    form.video_endpoint = k.video_endpoint || '/videos'
-    form.video_fetch_endpoint = k.video_fetch_endpoint || '/videos/{task_id}'
-    form.audio_endpoint = k.audio_endpoint || ''
-    isCreating.value = true
+  const mergedConfig = mergePlatformConfig(k.platform, {
+    base_url: k.base_url,
+    text_endpoint: k.text_endpoint,
+    image_endpoint: k.image_endpoint,
+    video_endpoint: k.video_endpoint,
+    video_fetch_endpoint: k.video_fetch_endpoint,
+    audio_endpoint: k.audio_endpoint
+  })
+
+  editingId.value = k.id
+  form.name = k.name
+  form.key = k.key || ''
+  applyPlatformConfig(mergedConfig)
+  isCreating.value = true
 }
 
 const deleteKey = async (id: number) => {
-  if(!await confirmDialog.show(t('projects.api.messages.deleteConfirmText'), t('projects.api.messages.deleteConfirmTitle'))) return
-  
+  if (!await confirmDialog.show(t('projects.api.messages.deleteConfirmText'), t('projects.api.messages.deleteConfirmTitle'))) return
+
   try {
     await apiKeyApi.delete(id)
     message.success(t('projects.api.messages.deleted'))
     fetchKeys()
-  } catch (e) { message.error(t('projects.api.messages.deleteFailed')) }
+  } catch (e) {
+    message.error(t('projects.api.messages.deleteFailed'))
+  }
 }
 
-    
-    const testConnection = async (id: number) => {
-      testingId.value = id
-      try {
-        const res: any = await aiApi.testConnection(id)
-        console.log(res)
-        message.success(t('projects.api.messages.connectionSuccess', { models: res.models.slice(0, 3).join(', ') }))
-      } catch (e: any) {
-        message.error(t('projects.api.messages.connectionFailed', { detail: e.response?.data?.detail || t('projects.api.messages.networkError') }))
-      } finally {
-        testingId.value = null
-      }
+const testConnection = async (id: number) => {
+  testingId.value = id
+  try {
+    const res: any = await aiApi.testConnection(id)
+    const modelPreview = Array.isArray(res.models) ? res.models.slice(0, 3).join(', ') : ''
+    if (modelPreview) {
+      message.success(t('projects.api.messages.connectionSuccess', { models: modelPreview }))
+    } else {
+      message.success(t('projects.api.messages.connectionSuccessNoModels'))
     }
-    
-    onMounted(() => {
-      fetchKeys()
-      
-      startOnboardingTour('api_matrix_view', [
-          { 
-              element: '#tour-api-create-btn', 
-              theme: 'pink',
-              image: loginImg,
-              popover: { title: t('projects.api.tour.connectTitle'), description: t('projects.api.tour.connectDesc'), side: 'left' } 
-          },
-          { 
-              element: '#tour-api-list', 
-              theme: 'yellow',
-              popover: { title: t('projects.api.tour.manageTitle'), description: t('projects.api.tour.manageDesc'), side: 'top' } 
-          }
-      ])
-    })
-    </script>
+  } catch (e: any) {
+    message.error(t('projects.api.messages.connectionFailed', { detail: e.response?.data?.detail || t('projects.api.messages.networkError') }))
+  } finally {
+    testingId.value = null
+  }
+}
+
+onMounted(() => {
+  fetchKeys()
+
+  startOnboardingTour('api_matrix_view', [
+    {
+      element: '#tour-api-create-btn',
+      theme: 'pink',
+      image: loginImg,
+      popover: { title: t('projects.api.tour.connectTitle'), description: t('projects.api.tour.connectDesc'), side: 'left' }
+    },
+    {
+      element: '#tour-api-list',
+      theme: 'yellow',
+      popover: { title: t('projects.api.tour.manageTitle'), description: t('projects.api.tour.manageDesc'), side: 'top' }
+    }
+  ])
+})
+</script>
     
     <template>
       <div class="h-full p-10 flex flex-col relative">
         <div class="flex items-center justify-between mb-2">
             <h2 class="text-3xl font-black text-gray-800 font-serif">{{ t('projects.api.title') }}</h2>
-            <NeuButton v-if="!isCreating" size="sm" @click="isCreating = true" id="tour-api-create-btn">
+            <NeuButton v-if="!isCreating" size="sm" @click="openCreate" id="tour-api-create-btn">
                 <Plus class="w-4 h-4 mr-2" /> {{ t('projects.api.newKey') }}
             </NeuButton>
         </div>
@@ -204,7 +278,14 @@ const deleteKey = async (id: number) => {
                <div class="grid grid-cols-2 gap-4">
                   <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.platformType') }}</label>
-                    <input v-model="form.platform" type="text" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-serif placeholder-gray-400 transition-colors" placeholder="openai" />
+                    <select
+                      v-model="form.platform"
+                      @change="applyPlatformPreset(form.platform)"
+                      class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-serif transition-colors"
+                    >
+                      <option v-for="option in platformOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                    </select>
+                    <p class="text-[10px] text-gray-400 mt-1">{{ platformHint }}</p>
                   </div>
                   <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.connectionName') }}</label>
@@ -214,13 +295,17 @@ const deleteKey = async (id: number) => {
 
                <div>
                   <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.baseUrl') }}</label>
-                  <input v-model="form.base_url" type="text" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-mono placeholder-gray-400 transition-colors" placeholder="https://api.openai.com/v1" />
+                  <input v-model="form.base_url" type="text" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-mono placeholder-gray-400 transition-colors" :placeholder="baseUrlPlaceholder" />
                </div>
 
                <div>
-                  <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ t('projects.api.apiKey') }} {{ editingId ? t('projects.api.keepEmptyHint') : '' }}</label>
+                  <label class="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    {{ t('projects.api.apiKey') }}
+                    {{ editingId ? t('projects.api.keepEmptyHint') : '' }}
+                    <span v-if="!keyRequired">({{ t('projects.api.optional') }})</span>
+                  </label>
                   <div class="relative group">
-                    <input v-model="form.key" type="password" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-mono pr-8 placeholder-gray-400 transition-colors" placeholder="sk-..." />
+                    <input v-model="form.key" type="password" class="w-full bg-white/50 border-b border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none font-mono pr-8 placeholder-gray-400 transition-colors" :placeholder="apiKeyPlaceholder" />
                     <Key class="w-4 h-4 text-gray-300 absolute right-2 top-2 group-focus-within:text-blue-500 transition-colors" />
                   </div>
                </div>
@@ -230,23 +315,40 @@ const deleteKey = async (id: number) => {
                   <div class="space-y-3">
                      <div class="flex items-center gap-3">
                         <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.chat') }}</span>
-                        <input v-model="form.text_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" placeholder="/chat/completions" />
+                        <input v-model="form.text_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" :placeholder="textEndpointPlaceholder" />
                      </div>
                      <div class="flex items-center gap-3">
                         <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.image') }}</span>
-                        <input v-model="form.image_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" placeholder="/images/generations" />
+                        <input
+                          v-model="form.image_endpoint"
+                          class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none"
+                          :class="isOllama ? 'opacity-60 cursor-not-allowed' : ''"
+                          :placeholder="imageEndpointPlaceholder"
+                          :readonly="isOllama"
+                        />
                      </div>
                      <div class="flex items-center gap-3">
                         <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.video') }}</span>
-                        <input v-model="form.video_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" placeholder="/videos" />
+                        <input
+                          v-model="form.video_endpoint"
+                          class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none"
+                          :class="isOllama ? 'opacity-60 cursor-not-allowed' : ''"
+                          :placeholder="videoEndpointPlaceholder"
+                          :readonly="isOllama"
+                        />
                      </div>
                      <div class="flex items-center gap-3">
                         <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.fetchVideo') }}</span>
-                        <input v-model="form.video_fetch_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none cursor-not-allowed opacity-75" placeholder="/videos/{task_id}" readonly />
+                        <input v-model="form.video_fetch_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none cursor-not-allowed opacity-75" :placeholder="videoFetchEndpointPlaceholder" readonly />
                      </div>
                      <div class="flex items-center gap-3">
                         <span class="text-xs font-mono text-gray-400 w-16 text-right">{{ t('projects.api.audio') }}</span>
-                        <input v-model="form.audio_endpoint" class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none" />
+                        <input
+                          v-model="form.audio_endpoint"
+                          class="flex-1 bg-gray-50 border-none rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-300 outline-none"
+                          :class="isOllama ? 'opacity-60 cursor-not-allowed' : ''"
+                          :readonly="isOllama"
+                        />
                      </div>
                   </div>
                </div>
@@ -285,7 +387,7 @@ const deleteKey = async (id: number) => {
                      {{ k.name }}
                      <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{{ k.masked_key }}</span>
                    </div>
-                   <div class="text-xs text-gray-400 font-mono mt-1">{{ k.platform }} • {{ k.base_url || t('projects.api.defaultNode') }}</div>
+                   <div class="text-xs text-gray-400 font-mono mt-1">{{ displayPlatform(k.platform) }} • {{ k.base_url || t('projects.api.defaultNode') }}</div>
                  </div>
                </div>
                

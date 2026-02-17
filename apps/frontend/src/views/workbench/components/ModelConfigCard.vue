@@ -5,6 +5,7 @@
   import NeuButton from '@/components/base/NeuButton.vue'
   import NeuSelect from '@/components/base/NeuSelect.vue'
   import NeuSwitch from '@/components/base/NeuSwitch.vue'
+  import { normalizePlatform } from '@/platforms'
   import { useI18n } from 'vue-i18n'
   
   const props = defineProps<{
@@ -83,7 +84,12 @@
   const availableKeys = ref<any[]>([]) 
   const modelOptions = ref<string[]>([]) 
   const availableStyles = ref<any[]>([])
-  const modelCache = ref<Record<string, string[]>>({})
+  type ModelType = 'text' | 'image' | 'video' | 'audio'
+  type ModelCatalog = {
+    all: string[]
+    byType: Record<ModelType, string[]>
+  }
+  const modelCache = ref<Record<string, ModelCatalog>>({})
   const voiceLanguageOptions = computed(() => [
     { label: t('workbench.modelConfig.voiceLanguages.unspecified'), value: '' },
     { label: t('workbench.modelConfig.voiceLanguages.chinese'), value: '汉语' },
@@ -110,23 +116,105 @@
     // { id: 'audio', label: '声音', icon: Music, color: 'text-green-600' },
     { id: 'style', label: t('workbench.modelConfig.tabs.style'), icon: Palette, color: 'text-pink-600' },
   ])
+
+  const showManualModelInput = computed(() => {
+    if (activeTab.value === 'style') return false
+    const tabConfig = config.value[activeTab.value]
+    return !!tabConfig?.key_id && !fetchingModels.value && modelOptions.value.length === 0
+  })
   
-  const fetchModels = async (keyId: string) => {
+  const inferModelTypesById = (modelId: string): Set<ModelType> => {
+    const v = String(modelId || '').toLowerCase()
+    const out = new Set<ModelType>()
+
+    if (
+      ['chat', 'gpt', 'claude', 'deepseek', 'qwen', 'llama', 'gemini', 'doubao', 'text', 'instruct', 'reasoner']
+        .some((kw) => v.includes(kw))
+    ) out.add('text')
+    if (
+      ['image', 'vision', 'flux', 'sd', 'stable-diffusion', 'dall', 'seedream', 'nano-banana', 'recraft', 'pixart', 'cogview']
+        .some((kw) => v.includes(kw))
+    ) out.add('image')
+    if (
+      ['video', 'sora', 'seedance', 'runway', 'pika', 'veo', 'kling', 'wanx', 'hunyuan-video', 'i2v', 't2v']
+        .some((kw) => v.includes(kw))
+    ) out.add('video')
+    if (
+      ['audio', 'speech', 'tts', 'voice', 'whisper', 'asr', 'transcribe']
+        .some((kw) => v.includes(kw))
+    ) out.add('audio')
+
+    if (out.size === 0) out.add('text')
+    return out
+  }
+
+  const buildFallbackCatalog = (models: string[]): ModelCatalog => {
+    const byType: Record<ModelType, string[]> = {
+      text: [],
+      image: [],
+      video: [],
+      audio: []
+    }
+    for (const model of models) {
+      const types = inferModelTypesById(model)
+      types.forEach((type) => {
+        if (!byType[type].includes(model)) byType[type].push(model)
+      })
+    }
+    return { all: models, byType }
+  }
+
+  const toModelCatalog = (res: any): ModelCatalog => {
+    const all = Array.isArray(res?.models) ? res.models.map((m: any) => String(m)) : []
+    const byTypeFromApi = res?.models_by_type
+    const hasStructuredGroups =
+      byTypeFromApi &&
+      typeof byTypeFromApi === 'object' &&
+      ['text', 'image', 'video', 'audio'].every((k) => Array.isArray(byTypeFromApi[k]))
+
+    if (!hasStructuredGroups) {
+      return buildFallbackCatalog(all)
+    }
+
+    const byType: Record<ModelType, string[]> = {
+      text: byTypeFromApi.text.map((m: any) => String(m)),
+      image: byTypeFromApi.image.map((m: any) => String(m)),
+      video: byTypeFromApi.video.map((m: any) => String(m)),
+      audio: byTypeFromApi.audio.map((m: any) => String(m))
+    }
+
+    return { all, byType }
+  }
+
+  const tabToModelType = (tab: string): ModelType => {
+    if (tab === 'image') return 'image'
+    if (tab === 'video') return 'video'
+    if (tab === 'audio') return 'audio'
+    return 'text'
+  }
+
+  const applyCatalogToOptions = (catalog: ModelCatalog, tab: string) => {
+    const modelType = tabToModelType(tab)
+    const scoped = catalog.byType[modelType] || []
+    modelOptions.value = scoped.length > 0 ? scoped : []
+  }
+
+  const fetchModels = async (keyId: string | number | null | undefined, tab: string) => {
     modelOptions.value = [] 
     if (!keyId) return
+    const cacheKey = String(keyId)
   
-    if (modelCache.value[keyId]) {
-      modelOptions.value = modelCache.value[keyId]
+    if (modelCache.value[cacheKey]) {
+      applyCatalogToOptions(modelCache.value[cacheKey], tab)
       return
     }
   
     fetchingModels.value = true
     try {
       const res: any = await aiApi.testConnection(Number(keyId))
-      if (res.models && Array.isArray(res.models)) {
-        modelOptions.value = res.models
-        modelCache.value[keyId] = res.models
-      }
+      const catalog = toModelCatalog(res)
+      modelCache.value[cacheKey] = catalog
+      applyCatalogToOptions(catalog, tab)
     } catch (e) {
       console.error('Fetch Models Failed', e)
     } finally {
@@ -155,7 +243,7 @@
   watch([() => activeTab.value, () => config.value[activeTab.value]?.key_id], ([newTab, newKey], [oldTab, oldKey]) => {
     if (newTab === 'style') return // Style tab doesn't use keys
     if (newKey !== oldKey || newTab !== oldTab) {
-      fetchModels(newKey)
+      fetchModels(newKey, newTab)
     }
   })
   
@@ -170,7 +258,7 @@
       ])
       
       availableKeys.value = keysRes.map((k: any) => ({ 
-        label: `${k.name} (${k.platform})`, 
+        label: `${k.name} (${t(`projects.api.platforms.${normalizePlatform(k.platform)}`)})`,
         value: k.id 
       }))
 
@@ -296,6 +384,14 @@
                 :placeholder="t('workbench.modelConfig.autoDefault')"
                 size="mini"
               />
+              <div v-if="showManualModelInput" class="mt-2 space-y-1">
+                <input
+                  v-model="config[activeTab].model"
+                  class="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-xs font-mono text-gray-700 outline-none focus:ring-1 focus:ring-blue-300"
+                  :placeholder="t('workbench.modelConfig.manualModelPlaceholder')"
+                />
+                <p class="text-[10px] text-gray-400">{{ t('workbench.modelConfig.manualModelHint') }}</p>
+              </div>
               
               <div v-if="config[activeTab].model" class="flex items-center gap-1.5 text-[10px] text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100 animate-in fade-in slide-in-from-top-1 mt-2">
                 <CheckCircle2 class="w-3 h-3" /> {{ t('workbench.modelConfig.ready') }}

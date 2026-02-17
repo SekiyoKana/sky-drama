@@ -12,7 +12,7 @@ class ApiKeyBase(BaseModel):
     audio_endpoint: Optional[str] = None
 
 class ApiKeyCreate(ApiKeyBase):
-    key: str  # 创建时需要原始 Key
+    key: Optional[str] = None  # Ollama 本地可不填
 
 class ApiKeyUpdate(ApiKeyBase):
     key: Optional[str] = None # 更新时 Key 可选

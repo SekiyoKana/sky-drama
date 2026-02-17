@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from typing import Optional
+from typing import Dict, List, Optional, Set
 import re
 import logging
 import os
@@ -9,7 +9,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel
-from openai import OpenAI
 
 from app.api import deps
 from app.services.ai_engine import AIEngine
@@ -18,6 +17,14 @@ from app.models.project import Episode
 from app.models.style import Style
 from app.core.config import settings
 from app.core.director_trace import DirectorTrace
+from app.core.provider_platform import (
+    normalize_platform,
+    resolve_base_url,
+    requires_api_key,
+)
+from app.utils.http_client import request as http_request
+from app.utils.ollama_client import list_ollama_models
+from app.utils.think_filter import sanitize_think_payload, strip_think_segments
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +42,139 @@ class GenerateRequest(BaseModel):
 
 class TestConnectionRequest(BaseModel):
     api_key_id: int
+
+
+_MODEL_TYPES = ("text", "image", "video", "audio")
+
+
+def _new_model_groups() -> Dict[str, List[str]]:
+    return {k: [] for k in _MODEL_TYPES}
+
+
+def _append_group(groups: Dict[str, List[str]], model_type: str, model_id: str):
+    if model_type not in groups:
+        return
+    if model_id not in groups[model_type]:
+        groups[model_type].append(model_id)
+
+
+def _normalize_capability_token(value: str) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def _collect_modalities(model_row: dict) -> Set[str]:
+    tokens: Set[str] = set()
+    for key in ("modality", "modalities", "input_modalities", "output_modalities"):
+        val = model_row.get(key)
+        if isinstance(val, str):
+            token = _normalize_capability_token(val)
+            if token:
+                tokens.add(token)
+        elif isinstance(val, list):
+            for item in val:
+                token = _normalize_capability_token(item)
+                if token:
+                    tokens.add(token)
+
+    capabilities = model_row.get("capabilities")
+    if isinstance(capabilities, dict):
+        for k, v in capabilities.items():
+            key_token = _normalize_capability_token(k)
+            if isinstance(v, bool):
+                if v:
+                    tokens.add(key_token)
+            elif isinstance(v, str):
+                val_token = _normalize_capability_token(v)
+                if val_token in {"true", "yes", "enabled", "supported"}:
+                    tokens.add(key_token)
+            elif isinstance(v, (int, float)):
+                if v:
+                    tokens.add(key_token)
+    return tokens
+
+
+def _infer_model_capabilities(platform: str, model_id: str, model_row: Optional[dict] = None) -> Set[str]:
+    text_words = (
+        "chat",
+        "gpt",
+        "claude",
+        "deepseek",
+        "qwen",
+        "llama",
+        "gemini",
+        "doubao",
+        "text",
+        "instruct",
+        "reasoner",
+    )
+    image_words = (
+        "image",
+        "vision",
+        "flux",
+        "sd",
+        "stable_diffusion",
+        "dall",
+        "dalle",
+        "seedream",
+        "nano_banana",
+        "recraft",
+        "pixart",
+        "cogview",
+    )
+    video_words = (
+        "video",
+        "sora",
+        "seedance",
+        "runway",
+        "pika",
+        "veo",
+        "kling",
+        "wanx",
+        "hunyuan_video",
+        "i2v",
+        "t2v",
+    )
+    audio_words = (
+        "audio",
+        "speech",
+        "tts",
+        "voice",
+        "whisper",
+        "asr",
+        "transcribe",
+    )
+
+    value = _normalize_capability_token(model_id)
+    capabilities: Set[str] = set()
+
+    if any(word in value for word in text_words):
+        capabilities.add("text")
+    if any(word in value for word in image_words):
+        capabilities.add("image")
+    if any(word in value for word in video_words):
+        capabilities.add("video")
+    if any(word in value for word in audio_words):
+        capabilities.add("audio")
+
+    if isinstance(model_row, dict):
+        tokens = _collect_modalities(model_row)
+        if any(tok in tokens for tok in {"text", "chat", "completion"}):
+            capabilities.add("text")
+        if any(tok in tokens for tok in {"image", "vision"}):
+            capabilities.add("image")
+        if "video" in tokens:
+            capabilities.add("video")
+        if any(tok in tokens for tok in {"audio", "speech", "tts", "asr", "transcription"}):
+            capabilities.add("audio")
+
+    if platform == "ollama":
+        # Ollama /api/tags does not provide reliable capability metadata.
+        capabilities.add("text")
+
+    if not capabilities:
+        capabilities.add("text")
+
+    return capabilities
 
 
 @router.post("/test-connection")
@@ -60,21 +200,64 @@ async def test_connection(
     #     raise HTTPException(status_code=500, detail="Key decryption failed")
 
     try:
-        base_url = (
-            str(api_key_record.base_url)
-            if api_key_record.base_url is not None
-            else "https://api.openai.com/v1"
-        )
-        client = OpenAI(api_key=real_key, base_url=base_url, timeout=10.0)
+        platform = normalize_platform(api_key_record.platform)
+        base_url = resolve_base_url(platform, api_key_record.base_url)
 
-        response = client.models.list()
-        available_models = [model.id for model in response.data]
-        available_models.sort()
+        if requires_api_key(platform) and not real_key:
+            raise HTTPException(status_code=400, detail="Auth failed: API Key is required")
+
+        model_groups = _new_model_groups()
+        model_capabilities: Dict[str, List[str]] = {}
+
+        if platform == "ollama":
+            available_models = list_ollama_models(base_url, real_key)
+            for model_id in available_models:
+                caps = sorted(_infer_model_capabilities(platform, model_id))
+                model_capabilities[model_id] = caps
+                for cap in caps:
+                    _append_group(model_groups, cap, model_id)
+        else:
+            # Prefer raw HTTP for compatibility across OpenAI-compatible providers.
+            headers = {"Content-Type": "application/json"}
+            if real_key:
+                headers["Authorization"] = f"Bearer {real_key}"
+
+            models_res = http_request(
+                "GET",
+                f"{base_url.rstrip('/')}/models",
+                headers=headers,
+                timeout=(10.0, 30.0),
+            )
+            if models_res.status_code != 200:
+                raise RuntimeError(models_res.text)
+
+            payload = models_res.json() if models_res.content else {}
+            rows = payload.get("data", []) if isinstance(payload, dict) else []
+            available_models = sorted(
+                [str(model.get("id")) for model in rows if isinstance(model, dict) and model.get("id")]
+            )
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                model_id = str(row.get("id") or "").strip()
+                if not model_id:
+                    continue
+                caps = sorted(_infer_model_capabilities(platform, model_id, row))
+                model_capabilities[model_id] = caps
+                for cap in caps:
+                    _append_group(model_groups, cap, model_id)
+
+        # Keep deterministic order consistent with available_models
+        for model_type in _MODEL_TYPES:
+            ordered = [m for m in available_models if m in set(model_groups[model_type])]
+            model_groups[model_type] = ordered
 
         return {
             "status": "success",
             "message": "Connection Successful",
             "models": available_models,
+            "models_by_type": model_groups,
+            "model_capabilities": model_capabilities,
         }
 
     except Exception as e:
@@ -169,6 +352,7 @@ async def update_script_item(
     current_config = copy.deepcopy(dict(episode.ai_config))
     script_data = current_config["generated_script"]
     found = False
+    sanitized_updates = sanitize_think_payload(req.updates or {})
 
     def update_in_list(data_list):
         nonlocal found
@@ -176,7 +360,7 @@ async def update_script_item(
             return
         for item in data_list:
             if isinstance(item, dict) and item.get("id") == req.item_id:
-                item.update(req.updates)
+                item.update(sanitized_updates)
                 found = True
                 return
 
@@ -244,6 +428,8 @@ async def generate_content(
 
     if not episode:
         raise HTTPException(status_code=404, detail="Episode not found")
+
+    req.prompt = strip_think_segments(req.prompt or "")
 
     # --- Prompt Resolution Logic ---
     if episode.ai_config and "generated_script" in episode.ai_config:
