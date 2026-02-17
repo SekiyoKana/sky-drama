@@ -309,9 +309,9 @@ class MyProvider(Base):
 
 - [x] **i18n**: Chinese / English / Japanese
 - [x] **Local model integration**: Ollama + Volcengine Ark (Seedance2.0)
-- [·] **Advanced video generation**: first/last-frame control and richer multi-image references
-- [ ] **Timeline enhancements**: transition animations on timeline tracks
 - [x] **Deep logs**: richer console logs + Director Workbench run records
+- [ ] **Advanced video generation** (in progress): first/last-frame control and richer multi-image references
+- [ ] **Timeline enhancements**: transition animations on timeline tracks
 - [ ] **Project management**: full project export/migration/backup
 - [ ] **Custom creation**: custom prompt templates and workflows
 - [ ] **Toolbox expansion**: more AI assistant tools
