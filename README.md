@@ -1,6 +1,6 @@
 # Sky Drama ☁️🎬
 
-**简体中文（默认）** | [English](README.en-US.md) | [日本語](README.ja-JP.md)
+**简体中文** | [English](README.en-US.md) | [日本語](README.ja-JP.md)
 
 <div align="center">
 
