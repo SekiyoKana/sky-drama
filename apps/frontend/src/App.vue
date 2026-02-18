@@ -12,7 +12,7 @@ import { useI18n } from 'vue-i18n';
 const isBackendReady = ref(false);
 const { t } = useI18n();
 const route = useRoute();
-const showGlobalLanguageSwitcher = computed(() => route.name !== 'Workbench');
+const showGlobalLanguageSwitcher = computed(() => route.name !== 'Workbench' && route.name !== 'NovelWorkbench');
 const statusMessage = ref(t('app.startup'));
 const retryCount = ref(0);
 

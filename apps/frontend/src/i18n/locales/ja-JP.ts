@@ -43,10 +43,10 @@ const jaJP = {
       api: 'API 設定',
       password: 'セキュリティ'
     },
-    archiveTitle: 'スクリプトアーカイブ',
+    archiveTitle: 'ストーリーアーカイブ',
     tour: {
       workbenchTitle: 'ワークベンチ',
-      workbenchDesc: 'ここで全ての脚本とプロジェクトを管理できます。クリックして制作を開始してください。',
+      workbenchDesc: 'ここで全てのストーリーとプロジェクトを管理できます。クリックして制作を開始してください。',
       stylesTitle: 'スタイルテンプレート',
       stylesDesc: 'AI 画像生成のスタイルを設定・管理します。',
       apiTitle: 'API 設定',
@@ -57,28 +57,28 @@ const jaJP = {
       listDesc: 'ここで新規プロジェクト作成や既存プロジェクトの確認ができます。<br>グリッド表示とリスト表示を切り替え可能です。'
     },
     workbench: {
-      title: '脚本',
-      subtitle: '続行する脚本を選択してください...',
-      loading: '脚本を読み込み中...',
+      title: 'ストーリー',
+      subtitle: '続行するストーリーを選択してください...',
+      loading: 'ストーリーを読み込み中...',
       archive: '設定集を見る',
-      delete: '脚本を削除',
-      newProject: '新規脚本',
+      delete: 'ストーリーを削除',
+      newProject: '新規ストーリー',
       tour: {
-        createTitle: '新しい脚本を作成',
+        createTitle: '新しいストーリーを作成',
         createDesc: 'ここをクリックして新しい制作プロジェクトを開始します。',
-        listTitle: 'マイ脚本',
-        listDesc: '脚本カバーをクリックして制作に入るか、下のボタンでアーカイブ・削除できます。'
+        listTitle: 'マイストーリー',
+        listDesc: 'ストーリーカバーをクリックして制作に入るか、下のボタンでアーカイブ・削除できます。'
       },
       messages: {
         createFailed: '作成に失敗しました',
         deleteConfirmTitle: '削除確認',
-        deleteConfirmText: '脚本「{name}」を削除しますか？この操作は取り消せません。',
+        deleteConfirmText: 'ストーリー「{name}」を削除しますか？この操作は取り消せません。',
         deleteFailed: '削除に失敗しました'
       }
     },
     createModal: {
-      title: '新しい脚本を作成',
-      namePlaceholder: '脚本タイトル...',
+      title: '新しいストーリーを作成',
+      namePlaceholder: 'ストーリータイトル...',
       descriptionPlaceholder: '短いあらすじ（任意）...',
       creating: '作成中...',
       create: '作成'
@@ -188,9 +188,18 @@ const jaJP = {
     episode: {
       createdAt: '作成日',
       archive: '設定集',
-      createEpisode: 'エピソード作成',
+      createEpisode: '作成',
       writeTitle: 'ここにタイトルを入力...',
       scrapQuestion: '削除しますか？',
+      entryPicker: {
+        title: 'ワークベンチを選択',
+        subtitle: 'この章をどのモードで開きますか？',
+        episodeWorkbench: 'エピソードワークベンチ',
+        episodeDesc: '分鏡・画像・動画の制作を続ける',
+        novelWorkbench: '小説ワークベンチ',
+        novelDesc: 'ノート風の章執筆モードに入る',
+        cancel: 'あとで選ぶ'
+      },
       status: {
         draft: '下書き',
         generating: '生成中',
@@ -211,6 +220,86 @@ const jaJP = {
       noCharacters: 'キャラクター記録はありません',
       scenes: 'シーン',
       noScenes: 'シーン記録はありません'
+    }
+  },
+  novelWorkbench: {
+    title: '小説ワークベンチ',
+    back: 'プロジェクトへ戻る',
+    loading: '小説ワークベンチを開いています...',
+    chapterLabel: 'Chapter',
+    chapterUntitled: '無題の章',
+    unknownCharacter: '不明なキャラクター',
+    unknownScene: '不明なシーン',
+    photoWallTitle: '人物・シーンの写真ウォール',
+    addCharacter: '人物を追加',
+    addScene: 'シーンを追加',
+    noReferences: 'キャラクター/シーン参照がありません',
+    journalTitle: '章の原稿',
+    journalHint: '章本文、下書き、語りのメモをここで管理します。',
+    mentionHint: '＠ を入力すると人物/シーン参照を挿入できます',
+    journalPlaceholder: 'この章の執筆を開始...',
+    configTitle: 'AI 執筆設定',
+    save: '小説設定を保存',
+    messages: {
+      loadFailed: '小説ワークベンチの読み込みに失敗しました',
+      saved: '小説設定を保存しました',
+      saveFailed: '小説設定の保存に失敗しました',
+      nameRequired: '名前は必須です',
+      characterCreated: 'キャラクターを作成しました',
+      sceneCreated: 'シーンを作成しました'
+    },
+    types: {
+      character: 'キャラクター',
+      scene: 'シーン'
+    },
+    sources: {
+      novel: '小説',
+      script: 'エピソード',
+      asset: 'アセット'
+    },
+    creator: {
+      characterTitle: 'キャラクター作成',
+      sceneTitle: 'シーン作成',
+      nameLabel: '名前',
+      namePlaceholder: '名前を入力',
+      roleLabel: '役割タグ',
+      rolePlaceholder: '例：主人公、ライバル、脇役',
+      moodLabel: 'シーンの雰囲気',
+      moodPlaceholder: '例：緊張、温かい、重い',
+      descriptionLabel: '説明',
+      descriptionPlaceholder: '外見、設定、細部などを記述...',
+      cancel: 'キャンセル',
+      confirm: '作成'
+    },
+    detail: {
+      typeLabel: 'タイプ',
+      sourceLabel: 'ソース',
+      roleLabel: '役割',
+      moodLabel: '雰囲気',
+      descriptionLabel: '説明',
+      empty: 'なし'
+    },
+    config: {
+      model: '執筆モデル',
+      perspective: '視点',
+      tone: '文体',
+      length: '章の長さ',
+      temperature: '創造性'
+    },
+    perspectives: {
+      first: '一人称',
+      third: '三人称',
+      omniscient: '全知視点'
+    },
+    tones: {
+      cinematic: 'シネマティック',
+      lyrical: '叙情的',
+      realistic: '写実的'
+    },
+    lengths: {
+      short: '短め',
+      medium: '中くらい',
+      long: '長め'
     }
   },
   workbench: {

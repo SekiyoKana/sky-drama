@@ -34,6 +34,7 @@
 - 🍎 **macOS App** (Beta)
 - 🪟 **Windows App** (Beta)
 - 🌐 **多言語 UI**（中文 / English / 日本語）
+- ✍️ **小説モード**（開発中）
 
 ---
 

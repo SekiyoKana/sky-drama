@@ -1114,7 +1114,7 @@ onUnmounted(() => {
 
     <!-- Header -->
     <header
-      class="flex items-center justify-between px-4 py-3 rounded-[1.5rem] neu-flat shrink-0 z-30 relative bg-[#E0E5EC]">
+      class="flex items-center justify-between px-4 py-3 rounded-3xl neu-flat shrink-0 z-30 relative bg-[#E0E5EC]">
       <div class="flex items-center gap-4">
         <button @click="goBack"
           class="p-2.5 rounded-full neu-flat hover:text-blue-500 active:neu-pressed transition-all text-gray-500">
@@ -1122,7 +1122,7 @@ onUnmounted(() => {
         </button>
         <div class="flex flex-col" v-if="episode">
           <h1 class="text-base font-bold tracking-tight text-gray-700">{{ episode.title }}</h1>
-          <span v-if="scriptData?.meta?.core_premise" class="text-xs text-gray-500 line-clamp-1 max-w-[300px]"
+          <span v-if="scriptData?.meta?.core_premise" class="text-xs text-gray-500 line-clamp-1 max-w-75"
             :title="scriptData.meta.core_premise">
             {{ scriptData.meta.core_premise }}
           </span>

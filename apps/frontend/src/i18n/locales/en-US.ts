@@ -43,10 +43,10 @@ const enUS = {
       api: 'API Settings',
       password: 'Security'
     },
-    archiveTitle: 'Script Archive',
+    archiveTitle: 'Story Archive',
     tour: {
       workbenchTitle: 'Workbench',
-      workbenchDesc: 'All your scripts and projects are here. Click to start creating.',
+      workbenchDesc: 'All your stories and projects are here. Click to start creating.',
       stylesTitle: 'Style Templates',
       stylesDesc: 'Configure and manage your AI image generation styles.',
       apiTitle: 'API Settings',
@@ -57,28 +57,28 @@ const enUS = {
       listDesc: 'Create a new project or open an existing one here.<br>Grid and list views are both supported.'
     },
     workbench: {
-      title: 'Scripts',
-      subtitle: 'Choose a script to continue...',
-      loading: 'Loading scripts...',
+      title: 'Stories',
+      subtitle: 'Choose a story to continue...',
+      loading: 'Loading stories...',
       archive: 'View archive',
-      delete: 'Delete script',
-      newProject: 'New Script',
+      delete: 'Delete story',
+      newProject: 'New Story',
       tour: {
-        createTitle: 'Create a new script',
+        createTitle: 'Create a new story',
         createDesc: 'Click here to start a new project.',
-        listTitle: 'My scripts',
-        listDesc: 'Click a script cover to enter, or use buttons below for archive and delete.'
+        listTitle: 'My stories',
+        listDesc: 'Click a story cover to enter, or use buttons below for archive and delete.'
       },
       messages: {
         createFailed: 'Failed to create',
         deleteConfirmTitle: 'Delete Confirmation',
-        deleteConfirmText: 'Delete script "{name}"? This action cannot be undone.',
+        deleteConfirmText: 'Delete story "{name}"? This action cannot be undone.',
         deleteFailed: 'Delete failed'
       }
     },
     createModal: {
-      title: 'Create New Script',
-      namePlaceholder: 'Script title...',
+      title: 'Create New Story',
+      namePlaceholder: 'Story title...',
       descriptionPlaceholder: 'Short synopsis (optional)...',
       creating: 'Creating...',
       create: 'Create'
@@ -188,9 +188,18 @@ const enUS = {
     episode: {
       createdAt: 'Created',
       archive: 'Story Book',
-      createEpisode: 'Create Episode',
+      createEpisode: 'Create',
       writeTitle: 'Write title here...',
       scrapQuestion: 'Delete?',
+      entryPicker: {
+        title: 'Choose Workbench',
+        subtitle: 'How would you like to open this chapter?',
+        episodeWorkbench: 'Episode Workbench',
+        episodeDesc: 'Continue storyboard, image, and video creation',
+        novelWorkbench: 'Novel Workbench',
+        novelDesc: 'Enter notebook-style chapter writing mode',
+        cancel: 'Not now'
+      },
       status: {
         draft: 'Draft',
         generating: 'Generating',
@@ -211,6 +220,86 @@ const enUS = {
       noCharacters: 'No character records',
       scenes: 'Scenes',
       noScenes: 'No scene records'
+    }
+  },
+  novelWorkbench: {
+    title: 'Novel Workbench',
+    back: 'Back to Projects',
+    loading: 'Opening novel workbench...',
+    chapterLabel: 'Chapter',
+    chapterUntitled: 'Untitled Chapter',
+    unknownCharacter: 'Unknown Character',
+    unknownScene: 'Unknown Scene',
+    photoWallTitle: 'Character & Scene Photo Wall',
+    addCharacter: 'Add Character',
+    addScene: 'Add Scene',
+    noReferences: 'No character/scene references yet',
+    journalTitle: 'Chapter Journal',
+    journalHint: 'Use this area for chapter drafting and narrative notes.',
+    mentionHint: 'Type ＠ to insert character/scene references quickly',
+    journalPlaceholder: 'Start writing this chapter...',
+    configTitle: 'AI Writing Config',
+    save: 'Save Novel Settings',
+    messages: {
+      loadFailed: 'Failed to load novel workbench',
+      saved: 'Novel settings saved',
+      saveFailed: 'Failed to save novel settings',
+      nameRequired: 'Name is required',
+      characterCreated: 'Character created',
+      sceneCreated: 'Scene created'
+    },
+    types: {
+      character: 'Character',
+      scene: 'Scene'
+    },
+    sources: {
+      novel: 'Novel',
+      script: 'Episode',
+      asset: 'Asset'
+    },
+    creator: {
+      characterTitle: 'Create Character',
+      sceneTitle: 'Create Scene',
+      nameLabel: 'Name',
+      namePlaceholder: 'Enter a name',
+      roleLabel: 'Character Role',
+      rolePlaceholder: 'e.g. lead, rival, support',
+      moodLabel: 'Scene Mood',
+      moodPlaceholder: 'e.g. tense, warm, depressing',
+      descriptionLabel: 'Description',
+      descriptionPlaceholder: 'Describe appearance, setup, or details...',
+      cancel: 'Cancel',
+      confirm: 'Create'
+    },
+    detail: {
+      typeLabel: 'Type',
+      sourceLabel: 'Source',
+      roleLabel: 'Role',
+      moodLabel: 'Mood',
+      descriptionLabel: 'Description',
+      empty: 'N/A'
+    },
+    config: {
+      model: 'Writing Model',
+      perspective: 'Perspective',
+      tone: 'Tone',
+      length: 'Chapter Length',
+      temperature: 'Creativity'
+    },
+    perspectives: {
+      first: 'First Person',
+      third: 'Third Person',
+      omniscient: 'Omniscient'
+    },
+    tones: {
+      cinematic: 'Cinematic',
+      lyrical: 'Lyrical',
+      realistic: 'Realistic'
+    },
+    lengths: {
+      short: 'Short',
+      medium: 'Medium',
+      long: 'Long'
     }
   },
   workbench: {

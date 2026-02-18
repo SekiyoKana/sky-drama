@@ -4,7 +4,7 @@
   import { useRouter } from 'vue-router'
   import { 
     ArrowLeft, Calendar, Plus, Play, 
-    Trash2, X, Check, Pencil, FileText 
+    Trash2, X, Check, Pencil, FileText, BookOpen
   } from 'lucide-vue-next'
   import NeuButton from '@/components/base/NeuButton.vue'
   import { episodeApi } from '@/api'
@@ -37,6 +37,9 @@
   const previewIndex = ref(0)
   
   const archiveVisible = ref(false)
+  const entryPickerVisible = ref(false)
+  const selectedEpisodeId = ref<number | null>(null)
+  const selectedEntryTarget = ref<HTMLElement | null>(null)
 
   const openPreview = (items: any[], index: number) => {
       previewList.value = items
@@ -145,56 +148,52 @@
     }, 500)
   }
   
-  const enterWorkbench = async (epId: number, event: MouseEvent) => {
-    if (editingId.value || deleteConfirmId.value) return 
-    if (!props.project) return
-  
-    if (props.project.assets) {
-        try {
-             const targetEp = episodes.value.find(e => e.id === epId)
-             if (targetEp && props.project.assets) {
-                 const currentConfig = targetEp.ai_config || {}
-                 const script = currentConfig.generated_script || {}
-                 let changed = false
-                 
-                 const existingCharIds = new Set((script.characters || []).map((c: any) => c.id))
-                 const existingSceneIds = new Set((script.scenes || []).map((s: any) => s.id))
-                 
-                 const newChars = [...(script.characters || [])]
-                 const newScenes = [...(script.scenes || [])]
-                 
-                 props.project.assets.characters.forEach((char: any) => {
-                     if (!existingCharIds.has(char.id)) {
-                         newChars.push(char)
-                         changed = true
-                     }
-                 })
-                 
-                 props.project.assets.scenes.forEach((scene: any) => {
-                     if (!existingSceneIds.has(scene.id)) {
-                         newScenes.push(scene)
-                         changed = true
-                     }
-                 })
-                 
-                 if (changed) {
-                     if (!currentConfig.generated_script) currentConfig.generated_script = {}
-                     currentConfig.generated_script.characters = newChars
-                     currentConfig.generated_script.scenes = newScenes
-                     
-                     await episodeApi.update(props.project.id, epId, { ai_config: currentConfig } as any)
-                 }
-             }
-        } catch (e) {
-            console.error("Sync failed", e)
-        }
-    }
+  const syncEpisodeAssets = async (epId: number) => {
+    if (!props.project?.assets) return
+    try {
+      const targetEp = episodes.value.find(e => e.id === epId)
+      if (!targetEp) return
+      const currentConfig = targetEp.ai_config || {}
+      const script = currentConfig.generated_script || {}
+      let changed = false
 
-    // 1. 获取点击目标的坐标 (相对于视口)
-    const target = (event.currentTarget as HTMLElement)
-    const rect = target.getBoundingClientRect()
-  
-    // 2. 初始化遮罩位置 (完全重合)
+      const existingCharIds = new Set((script.characters || []).map((c: any) => c.id))
+      const existingSceneIds = new Set((script.scenes || []).map((s: any) => s.id))
+
+      const newChars = [...(script.characters || [])]
+      const newScenes = [...(script.scenes || [])]
+
+      props.project.assets.characters.forEach((char: any) => {
+        if (!existingCharIds.has(char.id)) {
+          newChars.push(char)
+          changed = true
+        }
+      })
+
+      props.project.assets.scenes.forEach((scene: any) => {
+        if (!existingSceneIds.has(scene.id)) {
+          newScenes.push(scene)
+          changed = true
+        }
+      })
+
+      if (changed) {
+        if (!currentConfig.generated_script) currentConfig.generated_script = {}
+        currentConfig.generated_script.characters = newChars
+        currentConfig.generated_script.scenes = newScenes
+        await episodeApi.update(props.project.id, epId, { ai_config: currentConfig } as any)
+      }
+    } catch (e) {
+      console.error("Sync failed", e)
+    }
+  }
+
+  const playTransitionTo = async (toPath: string) => {
+    const target = selectedEntryTarget.value
+    const rect = target
+      ? target.getBoundingClientRect()
+      : new DOMRect(window.innerWidth / 2 - 140, window.innerHeight / 2 - 80, 280, 160)
+
     transitionState.style = {
       top: `${rect.top}px`,
       left: `${rect.left}px`,
@@ -204,11 +203,9 @@
       borderRadius: '12px'
     }
     transitionState.active = true
-  
-    // 3. 强制渲染第一帧
+
     await nextTick()
-  
-    // 4. 下一帧执行动画：扩散到全屏
+
     requestAnimationFrame(() => {
       transitionState.style = {
         top: '0px',
@@ -216,18 +213,43 @@
         width: '100vw',
         height: '100vh',
         opacity: 1,
-        borderRadius: '0px' // 方角
+        borderRadius: '0px'
       }
     })
-  
-    // 5. 动画结束后跳转 (500ms 对应 CSS duration)
+
     setTimeout(() => {
-      router.push(`/workbench/${props.project.id}/${epId}`)
-      // 跳转完成后，稍微延迟再移除遮罩，避免闪烁
+      router.push(toPath)
       setTimeout(() => {
         transitionState.active = false
       }, 100)
     }, 500)
+  }
+
+  const openEntryPicker = (epId: number, event: MouseEvent) => {
+    if (editingId.value || deleteConfirmId.value) return
+    if (!props.project) return
+    selectedEpisodeId.value = epId
+    selectedEntryTarget.value = event.currentTarget as HTMLElement
+    entryPickerVisible.value = true
+  }
+
+  const closeEntryPicker = () => {
+    entryPickerVisible.value = false
+    selectedEpisodeId.value = null
+    selectedEntryTarget.value = null
+  }
+
+  const confirmEntry = async (mode: 'episode' | 'novel') => {
+    if (!props.project || !selectedEpisodeId.value) return
+    const epId = selectedEpisodeId.value
+    entryPickerVisible.value = false
+    await syncEpisodeAssets(epId)
+    const path = mode === 'novel'
+      ? `/novel-workbench/${props.project.id}/${epId}`
+      : `/workbench/${props.project.id}/${epId}`
+    await playTransitionTo(path)
+    selectedEpisodeId.value = null
+    selectedEntryTarget.value = null
   }
   </script>
   
@@ -296,13 +318,13 @@
           <div 
             class="flex items-center justify-between pl-[50px] pr-4 py-3 min-h-[60px] hover:bg-gray-800/5 transition-all cursor-pointer border-b border-transparent"
             :class="{'opacity-50 pointer-events-none': scribblingId === ep.id}"
-            @click="enterWorkbench(ep.id, $event)"
+            @click="openEntryPicker(ep.id, $event)"
           >
             <div class="flex items-center gap-5 flex-1">
               
               <div 
                 class="tactile-btn w-10 h-10 rounded-lg flex items-center justify-center transition-transform active:scale-95 bg-white shadow-sm border border-gray-200"
-                @click.stop="enterWorkbench(ep.id, $event)" 
+                @click.stop="openEntryPicker(ep.id, $event)"
               >
                 <Play class="w-4 h-4 text-gray-600 fill-current ml-0.5" />
               </div>
@@ -373,6 +395,41 @@
   />
 
   <Teleport to="body">
+    <transition name="fade">
+      <div
+        v-if="entryPickerVisible"
+        class="fixed inset-0 z-[9998] bg-black/30 backdrop-blur-[2px] flex items-center justify-center p-4"
+        @click.self="closeEntryPicker"
+      >
+        <div class="entry-note">
+          <div class="entry-note-pin"></div>
+          <h3 class="entry-note-title">{{ t('projects.episode.entryPicker.title') }}</h3>
+          <p class="entry-note-subtitle">{{ t('projects.episode.entryPicker.subtitle') }}</p>
+          <div class="entry-note-actions">
+            <button class="entry-mode-btn" @click="confirmEntry('episode')">
+              <FileText class="w-5 h-5" />
+              <div class="flex-1 text-left">
+                <p class="font-bold text-sm">{{ t('projects.episode.entryPicker.episodeWorkbench') }}</p>
+                <p class="text-xs opacity-80">{{ t('projects.episode.entryPicker.episodeDesc') }}</p>
+              </div>
+            </button>
+            <button class="entry-mode-btn novel" @click="confirmEntry('novel')">
+              <BookOpen class="w-5 h-5" />
+              <div class="flex-1 text-left">
+                <p class="font-bold text-sm">{{ t('projects.episode.entryPicker.novelWorkbench') }}</p>
+                <p class="text-xs opacity-80">{{ t('projects.episode.entryPicker.novelDesc') }}</p>
+              </div>
+            </button>
+          </div>
+          <button class="entry-note-cancel" @click="closeEntryPicker">
+            {{ t('projects.episode.entryPicker.cancel') }}
+          </button>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <Teleport to="body">
     <div 
       v-if="transitionState.active"
       class="fixed z-[9999] pointer-events-none transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
@@ -430,6 +487,83 @@
   box-shadow: 
     inset 2px 2px 4px #d1d1d1, 
     inset -2px -2px 4px #ffffff;
+}
+
+.entry-note {
+  width: min(92vw, 460px);
+  background: linear-gradient(180deg, #fff3a5 0%, #ffef8b 100%);
+  border: 1px solid #c9b65e;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow:
+    0 28px 50px rgba(34, 24, 0, 0.25),
+    inset 0 2px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -2px 0 rgba(173, 137, 25, 0.2);
+  position: relative;
+}
+
+.entry-note-pin {
+  position: absolute;
+  top: -8px;
+  left: 28px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 30% 30%, #fefefe 0%, #d7d7d7 60%, #919191 100%);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
+}
+
+.entry-note-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #4f3e18;
+  margin-bottom: 2px;
+}
+
+.entry-note-subtitle {
+  font-size: 12px;
+  color: #735d2a;
+  margin-bottom: 14px;
+}
+
+.entry-note-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.entry-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(97, 74, 16, 0.24);
+  background: rgba(255, 255, 255, 0.72);
+  color: #4c3c16;
+  padding: 12px;
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.entry-mode-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 16px rgba(98, 78, 27, 0.16);
+}
+
+.entry-mode-btn.novel {
+  background: rgba(248, 236, 255, 0.72);
+  border-color: rgba(88, 64, 132, 0.22);
+  color: #452d6f;
+}
+
+.entry-note-cancel {
+  margin-top: 12px;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px dashed rgba(92, 73, 24, 0.35);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #6b5625;
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .scribble-path {

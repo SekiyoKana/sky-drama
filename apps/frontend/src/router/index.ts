@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/auth/LoginView.vue'
 import ProjectListView from '@/views/projects/ProjectListView.vue'
 import WorkbenchView from '@/views/workbench/WorkbenchView.vue'
+import NovelWorkbenchView from '@/views/novel-workbench/NovelWorkbenchView.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
@@ -23,6 +24,12 @@ const router = createRouter({
       name: 'Workbench', 
       component: WorkbenchView,
       meta: { requiresAuth: true } // 🔒 需要登录
+    },
+    {
+      path: '/novel-workbench/:projectId/:episodeId',
+      name: 'NovelWorkbench',
+      component: NovelWorkbenchView,
+      meta: { requiresAuth: true }
     },
     { 
       path: '/', 

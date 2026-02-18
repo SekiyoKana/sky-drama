@@ -43,10 +43,10 @@ const zhCN = {
       api: 'API 设置',
       password: '安全中心'
     },
-    archiveTitle: '剧本档案',
+    archiveTitle: '故事档案',
     tour: {
       workbenchTitle: '工作台',
-      workbenchDesc: '这里是你的所有剧本和项目，点击即可进入创作。',
+      workbenchDesc: '这里是你的所有故事和项目，点击即可进入创作。',
       stylesTitle: '风格模板',
       stylesDesc: '配置和管理你的 AI 绘图风格。',
       apiTitle: 'API 设置',
@@ -57,28 +57,28 @@ const zhCN = {
       listDesc: '点击这里可以新建项目，或者查看已有的项目。<br>支持网格视图和列表视图切换。'
     },
     workbench: {
-      title: '剧本',
-      subtitle: '选择一个剧本以继续...',
-      loading: '正在加载剧本...',
+      title: '故事',
+      subtitle: '选择一个故事以继续...',
+      loading: '正在加载故事...',
       archive: '查看设定集',
-      delete: '删除剧本',
-      newProject: '新剧本',
+      delete: '删除故事',
+      newProject: '新故事',
       tour: {
-        createTitle: '创建新剧本',
+        createTitle: '创建新故事',
         createDesc: '点击这里开始一个新的创作项目。',
-        listTitle: '我的剧本',
-        listDesc: '点击剧本封面进入创作，或者使用下方的按钮进行归档和删除。'
+        listTitle: '我的故事',
+        listDesc: '点击故事封面进入创作，或者使用下方的按钮进行归档和删除。'
       },
       messages: {
         createFailed: '创建失败',
         deleteConfirmTitle: '删除确认',
-        deleteConfirmText: '确认要删除剧本 "{name}" 吗？此操作无法撤销。',
+        deleteConfirmText: '确认要删除故事 "{name}" 吗？此操作无法撤销。',
         deleteFailed: '删除失败'
       }
     },
     createModal: {
-      title: '创建新剧本',
-      namePlaceholder: '剧本标题...',
+      title: '创建新故事',
+      namePlaceholder: '故事标题...',
       descriptionPlaceholder: '简短的故事梗概 (可选)...',
       creating: '创建中...',
       create: '创建'
@@ -188,9 +188,18 @@ const zhCN = {
     episode: {
       createdAt: '创建于',
       archive: '设定集',
-      createEpisode: '创建剧集',
+      createEpisode: '创建',
       writeTitle: '在此输入标题...',
       scrapQuestion: '确认删除？',
+      entryPicker: {
+        title: '选择工作台入口',
+        subtitle: '你想以哪种方式进入这个章节？',
+        episodeWorkbench: '剧集工作台',
+        episodeDesc: '继续分镜、画面和视频创作流程',
+        novelWorkbench: '小说工作台',
+        novelDesc: '以小说创作模式进行章节写作',
+        cancel: '先不进入'
+      },
       status: {
         draft: '草稿',
         generating: '生成中',
@@ -211,6 +220,86 @@ const zhCN = {
       noCharacters: '暂无角色记录',
       scenes: '场景',
       noScenes: '暂无场景记录'
+    }
+  },
+  novelWorkbench: {
+    title: '小说工作台',
+    back: '返回项目',
+    loading: '正在打开小说工作台...',
+    chapterLabel: 'Chapter',
+    chapterUntitled: '未命名章节',
+    unknownCharacter: '未知角色',
+    unknownScene: '未知场景',
+    photoWallTitle: '人物与场景照片墙',
+    addCharacter: '新建人物',
+    addScene: '新建场景',
+    noReferences: '暂无角色/场景设定图',
+    journalTitle: '章节手稿',
+    journalHint: '这里用于写作章节正文、段落草稿与旁白。',
+    mentionHint: '输入 ＠ 可快速插入人物/场景引用',
+    journalPlaceholder: '在此开始你的小说创作...',
+    configTitle: 'AI 写作配置',
+    save: '保存小说设置',
+    messages: {
+      loadFailed: '加载小说工作台失败',
+      saved: '小说设置已保存',
+      saveFailed: '保存小说设置失败',
+      nameRequired: '名称不能为空',
+      characterCreated: '人物已创建',
+      sceneCreated: '场景已创建'
+    },
+    types: {
+      character: '角色',
+      scene: '场景'
+    },
+    sources: {
+      novel: '小说',
+      script: '剧集',
+      asset: '资产'
+    },
+    creator: {
+      characterTitle: '创建人物',
+      sceneTitle: '创建场景',
+      nameLabel: '名称',
+      namePlaceholder: '请输入名称',
+      roleLabel: '人物标签',
+      rolePlaceholder: '例如：主角、反派、配角',
+      moodLabel: '场景氛围',
+      moodPlaceholder: '例如：紧张、温暖、压抑',
+      descriptionLabel: '描述',
+      descriptionPlaceholder: '写下外观、设定或细节...',
+      cancel: '取消',
+      confirm: '创建'
+    },
+    detail: {
+      typeLabel: '类型',
+      sourceLabel: '来源',
+      roleLabel: '角色标签',
+      moodLabel: '场景氛围',
+      descriptionLabel: '描述',
+      empty: '暂无'
+    },
+    config: {
+      model: '写作模型',
+      perspective: '叙事视角',
+      tone: '文风',
+      length: '章节长度',
+      temperature: '创造性'
+    },
+    perspectives: {
+      first: '第一人称',
+      third: '第三人称',
+      omniscient: '全知视角'
+    },
+    tones: {
+      cinematic: '电影感',
+      lyrical: '抒情',
+      realistic: '写实'
+    },
+    lengths: {
+      short: '短篇',
+      medium: '中篇',
+      long: '长篇'
     }
   },
   workbench: {

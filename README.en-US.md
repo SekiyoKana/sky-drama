@@ -34,6 +34,7 @@ It bridges the gap between text and video and combines writing, visual design, a
 - 🍎 **macOS App** (Beta)
 - 🪟 **Windows App** (Beta)
 - 🌐 **Multilingual UI** (Chinese / English / Japanese)
+- ✍️ **Novel Mode** (In Development)
 
 ---
 
