@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft, Download, RotateCcw, Settings2, Loader2, TerminalSquare, Sparkles, Film, ChevronDown, Package, X, FileText, Languages
+  ArrowLeft, Download, RotateCcw, Settings2, Loader2, TerminalSquare, Sparkles, Film, ChevronDown, Package, X, FileText, Languages, Copy, Image
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { save } from '@tauri-apps/plugin-dialog';
@@ -10,12 +10,13 @@ import { writeFile } from '@tauri-apps/plugin-fs';
 import NeuButton from '@/components/base/NeuButton.vue'
 import NeuConfirm from '@/components/base/NeuConfirm.vue'
 import LanguageSwitcher from '@/components/base/LanguageSwitcher.vue'
-import { projectApi, episodeApi, aiApi } from '@/api'
+import { projectApi, episodeApi, aiApi, styleApi } from '@/api'
 import { useMessage } from '@/utils/useMessage'
 import { useConfirm } from '@/utils/useConfirm'
 import { startOnboardingTour } from '@/utils/tour'
 import { debugLogger } from '@/utils/debugLogger'
 import { sanitizeThinkPayload, stripThinkTags } from '@/utils/thinkFilter'
+import { resolveImageUrl } from '@/utils/assets'
 
 import PreviewModule from './components/PreviewModule.vue'
 import AiDirectorModule from './components/AiDirectorModule.vue'
@@ -637,9 +638,71 @@ const showExportMenu = ref(false)
 const exportMenuRef = ref<HTMLElement | null>(null)
 const showLanguageMenu = ref(false)
 const languageMenuRef = ref<HTMLElement | null>(null)
+const showStoryboardExportPreview = ref(false)
+const storyboardPromptRecords = ref<
+  Record<string, { videoPrompt: string; styleImageUrl: string; imageUrl: string; videoUrl: string }>
+>({})
+const storyboardStyleFallbackImage = ref('')
+const storyboardPromptLoading = ref(false)
 const isExporting = ref(false)
 const exportProgress = ref(0)
 const exportStatusText = ref('')
+
+const normalizeAssetPath = (path: string | null | undefined): string => {
+  if (!path) return ''
+  const text = String(path).trim()
+  if (!text) return ''
+  if (text.startsWith('http://') || text.startsWith('https://')) {
+    try {
+      return new URL(text).pathname || ''
+    } catch (_error) {
+      return text
+    }
+  }
+  return text
+}
+
+const resolveStoryboardImageUrl = (path: string | null | undefined): string => {
+  if (!path) return ''
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('data:') ||
+    path.startsWith('blob:')
+  ) {
+    return path
+  }
+  return resolveImageUrl(path)
+}
+
+const storyboardExportItems = computed(() => {
+  const list = scriptData.value?.storyboard
+  if (!Array.isArray(list)) return []
+  return list.map((item: any, index: number) => {
+    const assetPath = normalizeAssetPath(item?.image_url)
+    const itemId = String(item?.id || `storyboard_${index}`)
+    const record = storyboardPromptRecords.value[itemId]
+    const prompt = stripThinkTags(
+      String(record?.videoPrompt || item?.video_generation_prompt || '')
+    )
+    const styleRefImageUrl = resolveStoryboardImageUrl(record?.styleImageUrl || '')
+    const finalStyleRefImageUrl = styleRefImageUrl || storyboardStyleFallbackImage.value
+    const videoUrl = resolveStoryboardImageUrl(record?.videoUrl || item?.video_url)
+    return {
+      assetPath,
+      itemId,
+      index,
+      shotId: String(item?.shot_id ?? index + 1),
+      shotType: stripThinkTags(String(item?.shot_type ?? '')),
+      action: stripThinkTags(String(item?.action ?? '')),
+      prompt,
+      styleRefImageUrl: finalStyleRefImageUrl,
+      showStyleRefImage: Boolean(finalStyleRefImageUrl),
+      imageUrl: resolveStoryboardImageUrl(record?.imageUrl || item?.image_url),
+      videoUrl,
+    }
+  })
+})
 
 const handleClickOutside = (event: MouseEvent) => {
   if (showExportMenu.value && exportMenuRef.value && !exportMenuRef.value.contains(event.target as Node)) {
@@ -648,6 +711,134 @@ const handleClickOutside = (event: MouseEvent) => {
   if (showLanguageMenu.value && languageMenuRef.value && !languageMenuRef.value.contains(event.target as Node)) {
     showLanguageMenu.value = false
   }
+}
+
+const copyTextWithFallback = async (text: string) => {
+  if (!text) return false
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch (_error) {
+    // fallback below
+  }
+
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return ok
+  } catch (_error) {
+    return false
+  }
+}
+
+const copyStoryboardPrompt = async (item: { prompt: string }) => {
+  const content = item.prompt || t('workbench.export.emptyPrompt')
+  const ok = await copyTextWithFallback(content)
+  if (ok) message.success(t('workbench.export.copyPromptSuccess'))
+  else message.error(t('workbench.export.copyFailed'))
+}
+
+const copyAllStoryboardPrompts = async () => {
+  if (!storyboardExportItems.value.length) {
+    message.warning(t('workbench.export.noStoryboardData'))
+    return
+  }
+  const payload = storyboardExportItems.value
+    .map((item) => {
+      const videoLine = `${t('workbench.export.videoLinkLabel')}: ${item.videoUrl || t('workbench.export.noVideoYet')}`
+      return `#${item.shotId}\n${item.prompt || t('workbench.export.emptyPrompt')}\n${videoLine}`
+    })
+    .join('\n\n---\n\n')
+  const ok = await copyTextWithFallback(payload)
+  if (ok) message.success(t('workbench.export.copyAllPromptsSuccess'))
+  else message.error(t('workbench.export.copyFailed'))
+}
+
+const copyStoryboardImage = async (item: { imageUrl: string }) => {
+  if (!item.imageUrl) {
+    message.warning(t('workbench.export.noImageToCopy'))
+    return
+  }
+
+  const ClipboardItemCtor = (window as any).ClipboardItem
+  if (ClipboardItemCtor && navigator.clipboard?.write) {
+    try {
+      const resp = await fetch(item.imageUrl)
+      const blob = await resp.blob()
+      const mimeType = blob.type || 'image/png'
+      await navigator.clipboard.write([new ClipboardItemCtor({ [mimeType]: blob })])
+      message.success(t('workbench.export.copyImageSuccess'))
+      return
+    } catch (_error) {
+      // fallback to URL copy
+    }
+  }
+
+  const copiedUrl = await copyTextWithFallback(item.imageUrl)
+  if (copiedUrl) message.info(t('workbench.export.copyImageUrlFallback'))
+  else message.error(t('workbench.export.copyFailed'))
+}
+
+const loadStoryboardPrompts = async () => {
+  if (!episode.value) return
+  storyboardPromptLoading.value = true
+  try {
+    const res: any = await aiApi.getStoryboardPrompts(episodeId)
+    const rawRecords = (res?.records || {}) as Record<string, any>
+    const normalizedRecords: Record<
+      string,
+      { videoPrompt: string; styleImageUrl: string; imageUrl: string; videoUrl: string }
+    > = {}
+    Object.entries(rawRecords).forEach(([itemId, record]) => {
+      const key = String(itemId || '').trim()
+      if (!key) return
+      normalizedRecords[key] = {
+        videoPrompt: stripThinkTags(String(record?.video_prompt || '')),
+        styleImageUrl: String(record?.style_image_url || ''),
+        imageUrl: String(record?.image_url || ''),
+        videoUrl: String(record?.video_url || ''),
+      }
+    })
+    storyboardPromptRecords.value = normalizedRecords
+    storyboardStyleFallbackImage.value = ''
+
+    const styleId = Number(episode.value?.ai_config?.style?.id || 0)
+    if (styleId > 0) {
+      const styles = await styleApi.list()
+      const matched = Array.isArray(styles)
+        ? styles.find((s: any) => Number(s?.id) === styleId)
+        : null
+      if (matched?.image_url) {
+        storyboardStyleFallbackImage.value = resolveStoryboardImageUrl(matched.image_url)
+      }
+    }
+  } catch (error) {
+    console.warn('[storyboard prompts] failed to load prompt records', error)
+    storyboardPromptRecords.value = {}
+    storyboardStyleFallbackImage.value = ''
+  } finally {
+    storyboardPromptLoading.value = false
+  }
+}
+
+const openStoryboardExportPreview = () => {
+  showExportMenu.value = false
+  if (!episode.value) return
+  if (!storyboardExportItems.value.length) {
+    message.warning(t('workbench.export.noStoryboardData'))
+    return
+  }
+  showStoryboardExportPreview.value = true
+  loadStoryboardPrompts()
 }
 
 const handleExportAssets = async () => {
@@ -716,8 +907,7 @@ const handleExportAssets = async () => {
   }
 }
 
-const handleExportStoryboard = async () => {
-  showExportMenu.value = false
+const doExportStoryboard = async () => {
   if (!episode.value) return
   message.info(t('workbench.messages.exportingStoryboard'))
 
@@ -781,6 +971,11 @@ const handleExportStoryboard = async () => {
     console.error(e)
     message.error(t('workbench.messages.exportStoryboardFailed'))
   }
+}
+
+const handleConfirmExportStoryboard = async () => {
+  showStoryboardExportPreview.value = false
+  await doExportStoryboard()
 }
 
 const handleExportVideo = async () => {
@@ -1001,7 +1196,7 @@ onUnmounted(() => {
                 class="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/50 hover:shadow-sm transition-all text-xs font-bold text-gray-600 active:scale-95">
                 <Package class="w-4 h-4 text-orange-500" /> {{ t('workbench.export.assets') }}
               </button>
-              <button @click="handleExportStoryboard"
+              <button @click="openStoryboardExportPreview"
                 class="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/50 hover:shadow-sm transition-all text-xs font-bold text-gray-600 active:scale-95">
                 <FileText class="w-4 h-4 text-purple-500" /> {{ t('workbench.export.storyboard') }}
               </button>
@@ -1118,6 +1313,150 @@ onUnmounted(() => {
 
     <ExecutionConsole :visible="showConsole" :logs="streamLogs" @close="showConsole = false" />
 
+    <transition name="fade">
+      <div
+        v-if="showStoryboardExportPreview"
+        class="fixed inset-0 z-[95] bg-black/35 backdrop-blur-sm flex items-center justify-center p-4"
+        @click.self="showStoryboardExportPreview = false"
+      >
+        <div class="storyboard-preview-shell w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
+          <div class="storyboard-preview-header px-6 py-4 border-b border-[#d4c8ae] flex items-center justify-between">
+            <div>
+              <h3 class="text-xl font-black text-[#5f4f39] tracking-wide">{{ t('workbench.export.previewTitle') }}</h3>
+              <p class="text-xs text-[#8b7658] mt-1">{{ t('workbench.export.previewSubtitle', { count: storyboardExportItems.length }) }}</p>
+              <p v-if="storyboardPromptLoading" class="text-[11px] text-[#9f8867] mt-1">
+                {{ t('workbench.export.promptLoading') }}
+              </p>
+            </div>
+            <button
+              class="p-2 rounded-full bg-[#efe4d1] text-[#7c6645] hover:bg-[#e6d8c0] transition-colors"
+              @click="showStoryboardExportPreview = false"
+              :aria-label="t('workbench.export.closePreview')"
+              :title="t('workbench.export.closePreview')"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto custom-scroll p-6 storyboard-preview-body">
+            <div
+              v-if="!storyboardExportItems.length"
+              class="h-full min-h-[280px] rounded-2xl border border-dashed border-[#ccbfa7] bg-[#f5ecdc] flex items-center justify-center text-sm text-[#9b8466]"
+            >
+              {{ t('workbench.export.noStoryboardData') }}
+            </div>
+
+            <div v-else class="flex flex-col gap-6">
+              <article
+                v-for="item in storyboardExportItems"
+                :key="`storyboard-export-${item.index}-${item.shotId}`"
+                class="storyboard-paper-card relative"
+              >
+                <div class="storyboard-tape"></div>
+                <div class="p-5">
+                  <div class="storyboard-note">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                      <div class="flex items-center gap-2 text-[#7e6b4e]">
+                        <span class="text-[11px] font-bold px-2 py-0.5 rounded bg-[#eadfcf] border border-[#d3c5ac]">
+                          {{ t('workbench.export.shotLabel', { number: item.index + 1 }) }}
+                        </span>
+                        <span class="text-[11px] font-semibold text-[#9b8768]">#{{ item.shotId }}</span>
+                        <span v-if="item.shotType" class="text-[11px] text-[#826f52]">{{ item.shotType }}</span>
+                      </div>
+                    </div>
+
+                    <h4 class="text-sm font-bold text-[#604f3a] mb-2">
+                      {{ item.action || t('workbench.export.emptyAction') }}
+                    </h4>
+
+                    <div class="rounded-lg border border-[#d7c9b0] bg-[#fcf8ef] p-3 shadow-inner">
+                      <div class="flex items-start justify-between gap-2 mb-2">
+                        <div class="flex items-center gap-2">
+                          <p class="text-[11px] font-semibold text-[#8e795b]">{{ t('workbench.export.promptLabel') }}</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                          <a
+                            v-if="item.imageUrl"
+                            :href="item.imageUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="style-ref-thumb"
+                            :title="t('workbench.export.openImage')"
+                            :aria-label="t('workbench.export.openImage')"
+                          >
+                            <img :src="item.imageUrl" class="w-full h-full object-cover" />
+                          </a>
+                          <a
+                            v-if="item.showStyleRefImage"
+                            :href="item.styleRefImageUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="style-ref-thumb"
+                            :title="t('workbench.export.styleReferenceLabel')"
+                            :aria-label="t('workbench.export.styleReferenceLabel')"
+                          >
+                            <img :src="item.styleRefImageUrl" class="w-full h-full object-cover" />
+                          </a>
+                        </div>
+                      </div>
+                      <pre class="text-xs leading-relaxed whitespace-pre-wrap break-words text-[#5c4c36] font-mono">{{ item.prompt || t('workbench.export.emptyPrompt') }}</pre>
+                      <div class="mt-2 flex items-center gap-2 text-[11px] text-[#77644a]">
+                        <span class="font-semibold">{{ t('workbench.export.videoLinkLabel') }}</span>
+                        <a
+                          v-if="item.videoUrl"
+                          :href="item.videoUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-[#6b5ce7] hover:underline break-all"
+                        >
+                          {{ t('workbench.export.openVideo') }}
+                        </a>
+                        <span v-else class="text-[#9b8666]">{{ t('workbench.export.noVideoYet') }}</span>
+                      </div>
+                    </div>
+
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        class="storyboard-action-btn"
+                        @click="copyStoryboardPrompt(item)"
+                      >
+                        <Copy class="w-3.5 h-3.5" />
+                        {{ t('workbench.export.copyPrompt') }}
+                      </button>
+                      <button
+                        class="storyboard-action-btn"
+                        @click="copyStoryboardImage(item)"
+                      >
+                        <Image class="w-3.5 h-3.5" />
+                        {{ t('workbench.export.copyImage') }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="storyboard-preview-footer px-6 py-4 border-t border-[#d4c8ae] flex items-center justify-between gap-3">
+            <button class="storyboard-footer-btn" @click="copyAllStoryboardPrompts">
+              <Copy class="w-4 h-4" />
+              {{ t('workbench.export.copyAllPrompts') }}
+            </button>
+
+            <div class="flex items-center gap-2">
+              <button class="storyboard-footer-btn" @click="showStoryboardExportPreview = false">
+                {{ t('workbench.export.closePreview') }}
+              </button>
+              <NeuButton size="sm" variant="primary" @click="handleConfirmExportStoryboard">
+                <FileText class="w-4 h-4 mr-1" />
+                {{ t('workbench.export.confirmExport') }}
+              </NeuButton>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <NeuConfirm />
 
     <VideoPreviewModal :visible="videoPreviewVisible" :video-url="currentVideoUrl" :poster-url="currentVideoPoster"
@@ -1202,5 +1541,112 @@ onUnmounted(() => {
 .pop-leave-to {
   opacity: 0;
   transform: scale(0.95);
+}
+
+.storyboard-preview-shell {
+  border-radius: 1.25rem;
+  border: 1px solid #e7dbc6;
+  background: linear-gradient(180deg, #f7efdf 0%, #efe2cb 100%);
+  box-shadow: 0 30px 50px rgba(61, 46, 27, 0.35);
+}
+
+.storyboard-preview-header,
+.storyboard-preview-footer {
+  background: linear-gradient(180deg, #f6eddc 0%, #ecdfc7 100%);
+}
+
+.storyboard-preview-body {
+  background:
+    radial-gradient(circle at 15% 15%, rgba(255, 255, 255, 0.55) 0, transparent 45%),
+    repeating-linear-gradient(0deg, rgba(158, 132, 96, 0.05) 0, rgba(158, 132, 96, 0.05) 1px, transparent 1px, transparent 26px),
+    #f4ead8;
+}
+
+.storyboard-paper-card {
+  background: #fff9ef;
+  border: 1px solid #d9c8ac;
+  border-radius: 1rem;
+  box-shadow:
+    0 10px 20px rgba(79, 60, 33, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.storyboard-tape {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 96px;
+  height: 22px;
+  transform: translateX(-50%) rotate(-1.8deg);
+  background: rgba(238, 214, 151, 0.75);
+  border: 1px solid rgba(172, 145, 87, 0.4);
+  box-shadow: 0 3px 6px rgba(61, 46, 27, 0.18);
+}
+
+.storyboard-photo-frame {
+  border-radius: 0.75rem;
+  border: 1px solid #d2c1a6;
+  background: #e8dcc8;
+  box-shadow:
+    inset 0 0 0 6px #f8f1e5,
+    inset 0 0 0 7px #d9c8ad;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.storyboard-note {
+  background: #fdf8ee;
+  border: 1px solid #e2d4bc;
+  border-radius: 0.75rem;
+  padding: 0.85rem;
+}
+
+.storyboard-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6f5a3d;
+  border-radius: 0.55rem;
+  border: 1px solid #d8c7ab;
+  background: #f5e9d5;
+  transition: all 0.2s ease;
+}
+
+.storyboard-action-btn:hover {
+  background: #f0e1c9;
+  color: #5e4c34;
+}
+
+.storyboard-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid #d8c8ac;
+  background: #f5ead8;
+  color: #6b583d;
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+
+.storyboard-footer-btn:hover {
+  background: #efdfc6;
+}
+
+.style-ref-thumb {
+  width: 64px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 0.45rem;
+  overflow: hidden;
+  border: 1px solid #d8c8ae;
+  background: #ece1cf;
+  cursor: zoom-in;
+  box-shadow: 0 1px 3px rgba(93, 72, 39, 0.18);
 }
 </style>

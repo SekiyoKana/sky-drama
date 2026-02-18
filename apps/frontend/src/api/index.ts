@@ -31,6 +31,7 @@ export const aiApi = {
     testConnection: (apiKeyId: number) => request.post('/ai/test-connection', { api_key_id: apiKeyId }),
     updateScriptItem: (data: { episode_id: number, item_id: string, updates: any }) => request.post('/ai/script/update_item', data),
     deleteScriptItem: (data: { episode_id: number, item_id: string }) => request.post('/ai/script/delete_item', data),
+    getStoryboardPrompts: (episodeId: number) => request.get('/ai/script/storyboard_prompts', { params: { episode_id: episodeId } }),
     uploadReference: (file: File, category?: string) => {
       const formData = new FormData()
       formData.append('file', file)

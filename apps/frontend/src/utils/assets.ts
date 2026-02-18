@@ -9,44 +9,58 @@ export const getBaseUrl = (): string => {
       return ''
     }
   }
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
   return ''
 }
 
 export const resolveImageUrl = (path: string | undefined | null): string => {
   if (!path) return ''
+  let normalizedPath = path
 
   // Tauri: always serve assets from local backend
   // @ts-ignore
   const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined
   if (isTauri) {
-    if (path.startsWith('http') || path.startsWith('https') || path.startsWith('data:') || path.startsWith('blob:')) {
-      return path
+    if (
+      normalizedPath.startsWith('http') ||
+      normalizedPath.startsWith('https') ||
+      normalizedPath.startsWith('data:') ||
+      normalizedPath.startsWith('blob:')
+    ) {
+      return normalizedPath
     }
-    const cleanPath = path.startsWith('/') ? path : `/${path}`
+    const cleanPath = normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`
     return `http://127.0.0.1:11451${cleanPath}`
   }
   
   // 1. Check for legacy absolute localhost URLs (from migrated database)
   // If the URL contains localhost/127.0.0.1 but we are NOT on localhost,
   // we must rewrite it to be relative or point to current origin.
-  if (path.includes('localhost:11451') || path.includes('127.0.0.1:11451')) {
+  if (normalizedPath.includes('localhost:11451') || normalizedPath.includes('127.0.0.1:11451')) {
     // Extract the path part: http://localhost:11451/assets/foo.png -> /assets/foo.png
     try {
-        const url = new URL(path)
-        return url.pathname + url.search
+        const url = new URL(normalizedPath)
+        normalizedPath = url.pathname + url.search
     } catch(e) {
         // Fallback for malformed URLs
-        return path.replace(/https?:\/\/(localhost|127\.0\.0\.1):11451/, '')
+        normalizedPath = normalizedPath.replace(/https?:\/\/(localhost|127\.0\.0\.1):11451/, '')
     }
   }
 
-  if (path.startsWith('http') || path.startsWith('https') || path.startsWith('data:') || path.startsWith('blob:')) {
-    return path
+  if (
+    normalizedPath.startsWith('http') ||
+    normalizedPath.startsWith('https') ||
+    normalizedPath.startsWith('data:') ||
+    normalizedPath.startsWith('blob:')
+  ) {
+    return normalizedPath
   }
   
   const baseUrl = getBaseUrl()
-  if (!baseUrl) return path
+  if (!baseUrl) return normalizedPath
 
-  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  const cleanPath = normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`
   return `${baseUrl}${cleanPath}`
 }

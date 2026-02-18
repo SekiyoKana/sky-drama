@@ -203,7 +203,11 @@ const handleDeleteItem = async (type: 'chars' | 'scenes' | 'board', index: numbe
 }
 
 
-const handleUpdateItem = async (itemId: string, updates: any) => {
+const handleUpdateItem = async (
+    itemId: string,
+    updates: any,
+    options: { silent?: boolean } = {}
+) => {
     // Optimistic local update
     try {
         const sanitizedUpdates = sanitizeThinkPayload(updates)
@@ -224,9 +228,13 @@ const handleUpdateItem = async (itemId: string, updates: any) => {
             item_id: itemId,
             updates: sanitizedUpdates
         })
+        return true
     } catch (e) {
         console.error("Update failed", e)
-        message.error(t('workbench.scriptEditor.messages.updateFailed'))
+        if (!options.silent) {
+            message.error(t('workbench.scriptEditor.messages.updateFailed'))
+        }
+        return false
     }
 }
 
@@ -334,25 +342,56 @@ const handleGenerate = async (type: 'image' | 'video' | 'text', item: any, index
               } else if (msg.type === 'finish') {
                   if (type === 'image' || type === 'video') {
                       let url = '';
+                      let finalGenerationPrompt = ''
                       if (typeof msg.payload === 'string') {
                           try {
                               const json = JSON.parse(msg.payload);
                               url = json.url;
+                              if (type === 'video') {
+                                finalGenerationPrompt = stripThinkTags(
+                                  String(json.video_request_prompt || json.prompt || '')
+                                )
+                              } else {
+                                finalGenerationPrompt = stripThinkTags(
+                                  String(json.provider_prompt || json.final_prompt || '')
+                                )
+                              }
                           } catch (e) {
                               if (msg.payload.startsWith('http')) url = msg.payload;
                           }
                       } else if (msg.payload?.url) {
                           url = msg.payload.url;
+                          if (type === 'video') {
+                            finalGenerationPrompt = stripThinkTags(
+                              String(msg.payload.video_request_prompt || msg.payload.prompt || '')
+                            )
+                          } else {
+                            finalGenerationPrompt = stripThinkTags(
+                              String(msg.payload.provider_prompt || msg.payload.final_prompt || '')
+                            )
+                          }
                       }
 
                       if (url) {
                           const normalizedUrl = resolveImageUrl(url)
+                          const updates: Record<string, any> = {}
                           if (type === 'video') {
                               item.video_url = normalizedUrl
-                              handleUpdateItem(item.id, { video_url: normalizedUrl })
+                              updates.video_url = normalizedUrl
+                              if (finalGenerationPrompt) {
+                                item.video_generation_prompt = finalGenerationPrompt
+                                updates.video_generation_prompt = finalGenerationPrompt
+                              }
                           } else {
                               item.image_url = normalizedUrl
-                              handleUpdateItem(item.id, { image_url: normalizedUrl })
+                              updates.image_url = normalizedUrl
+                              if (finalGenerationPrompt) {
+                                item.generation_prompt = finalGenerationPrompt
+                                updates.generation_prompt = finalGenerationPrompt
+                              }
+                          }
+                          if (item.id && Object.keys(updates).length > 0) {
+                            handleUpdateItem(item.id, updates)
                           }
                           
                           let mediaName = `${type}-${index}`
@@ -443,10 +482,19 @@ const handleUploadReference = async (item: any, file: File, category: 'character
             throw new Error('Upload failed: no url returned')
         }
         item.reference_image = url
+        let persisted = true
         if (item.id) {
-            await handleUpdateItem(item.id, { reference_image: url })
+            persisted = await handleUpdateItem(
+                item.id,
+                { reference_image: url },
+                { silent: true }
+            )
         }
-        message.success(t('workbench.scriptEditor.messages.referenceUploaded'))
+        if (persisted) {
+            message.success(t('workbench.scriptEditor.messages.referenceUploaded'))
+        } else {
+            message.warning(t('workbench.scriptEditor.messages.referenceUploadedButSaveFailed'))
+        }
     } catch (e) {
         console.error(e)
         message.error(t('workbench.scriptEditor.messages.uploadFailed'))

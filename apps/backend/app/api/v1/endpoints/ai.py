@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import uuid
+from urllib.parse import urlparse
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -14,6 +15,7 @@ from app.api import deps
 from app.services.ai_engine import AIEngine
 from app.models.apikey import ApiKey
 from app.models.project import Episode
+from app.models.asset import Asset
 from app.models.style import Style
 from app.core.config import settings
 from app.core.director_trace import DirectorTrace
@@ -283,6 +285,21 @@ class DeleteScriptItemRequest(BaseModel):
     item_id: str
 
 
+def _normalize_asset_url(url: str) -> str:
+    if not url:
+        return ""
+    text = str(url).strip()
+    if not text:
+        return ""
+    if text.startswith("http://") or text.startswith("https://"):
+        try:
+            parsed = urlparse(text)
+            return parsed.path or ""
+        except Exception:
+            return text
+    return text
+
+
 @router.post("/script/delete_item")
 async def delete_script_item(
     req: DeleteScriptItemRequest,
@@ -386,6 +403,142 @@ async def update_script_item(
     return {"status": "success", "message": "Item updated", "item_id": req.item_id}
 
 
+@router.get("/script/storyboard_prompts")
+async def get_storyboard_prompts(
+    episode_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user=Depends(deps.get_current_user),
+):
+    episode = db.query(Episode).filter(Episode.id == episode_id).first()
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    script_data = {}
+    if episode.ai_config and "generated_script" in episode.ai_config:
+        script_data = episode.ai_config.get("generated_script") or {}
+
+    storyboard = script_data.get("storyboard") if isinstance(script_data, dict) else None
+    if not isinstance(storyboard, list):
+        return {"status": "success", "records": {}}
+
+    video_config = {}
+    if isinstance(episode.ai_config, dict):
+        raw_video_config = episode.ai_config.get("video")
+        if isinstance(raw_video_config, dict):
+            video_config = raw_video_config
+
+    storyboard_refs = []
+    image_urls: Set[str] = set()
+    video_urls: Set[str] = set()
+    for idx, item in enumerate(storyboard):
+        if not isinstance(item, dict):
+            continue
+        image_url_raw = str(item.get("image_url") or "").strip()
+        video_url_raw = str(item.get("video_url") or "").strip()
+        image_url_norm = _normalize_asset_url(image_url_raw)
+        video_url_norm = _normalize_asset_url(video_url_raw)
+        image_url = image_url_norm if image_url_norm.startswith("/assets/") else image_url_raw
+        video_url = video_url_norm if video_url_norm.startswith("/assets/") else video_url_raw
+        image_asset_url = image_url_norm if image_url_norm.startswith("/assets/") else ""
+        video_asset_url = video_url_norm if video_url_norm.startswith("/assets/") else ""
+        if image_asset_url:
+            image_urls.add(image_asset_url)
+        if video_asset_url:
+            video_urls.add(video_asset_url)
+        item_id = str(item.get("id") or f"storyboard_{idx}")
+        fallback_prompt = str(
+            item.get("video_generation_prompt")
+            or item.get("visual_prompt")
+            or item.get("action")
+            or ""
+        )
+        storyboard_refs.append(
+            {
+                "item_id": item_id,
+                "image_url": image_url,
+                "image_asset_url": image_asset_url,
+                "video_url": video_url,
+                "video_asset_url": video_asset_url,
+                "fallback_prompt": fallback_prompt,
+            }
+        )
+
+    all_urls = set(image_urls) | set(video_urls)
+    assets = []
+    if all_urls:
+        assets = (
+            db.query(Asset)
+            .filter(
+                Asset.episode_id == episode_id,
+                Asset.url.in_(list(all_urls)),
+                Asset.type.in_(["image", "video"]),
+            )
+            .all()
+        )
+
+    def _video_request_prompt(meta_data: dict) -> str:
+        text = (
+            meta_data.get("video_request_prompt")
+            or meta_data.get("prompt")
+            or meta_data.get("provider_prompt")
+            or ""
+        )
+        return str(sanitize_think_payload(text) if text else "")
+
+    image_assets: Dict[str, Asset] = {}
+    video_assets: Dict[str, Asset] = {}
+    for asset in assets:
+        if asset.type == "image":
+            prev = image_assets.get(asset.url)
+            if prev is None or asset.id > prev.id:
+                image_assets[asset.url] = asset
+        elif asset.type == "video":
+            prev = video_assets.get(asset.url)
+            if prev is None or asset.id > prev.id:
+                video_assets[asset.url] = asset
+
+    records = {}
+    for ref in storyboard_refs:
+        key = str(ref.get("item_id") or "").strip()
+        if not key:
+            continue
+
+        image_asset_url = str(ref.get("image_asset_url") or "")
+        video_asset_url = str(ref.get("video_asset_url") or "")
+        image_asset = image_assets.get(image_asset_url) if image_asset_url else None
+        video_asset = video_assets.get(video_asset_url) if video_asset_url else None
+
+        image_meta = (
+            image_asset.meta_data
+            if image_asset and isinstance(image_asset.meta_data, dict)
+            else {}
+        )
+        video_meta = (
+            video_asset.meta_data
+            if video_asset and isinstance(video_asset.meta_data, dict)
+            else {}
+        )
+
+        video_prompt = _video_request_prompt(video_meta)
+        if not video_prompt:
+            resolved_fallback = AIEngine.resolve_prompt_tags(
+                str(ref.get("fallback_prompt") or ""),
+                script_data,
+                text_mode=False,
+            )
+            video_prompt = AIEngine.build_video_request_prompt(resolved_fallback, video_config)
+        style_image_url = str(image_meta.get("style_image_url") or "")
+        records[key] = {
+            "item_id": key,
+            "video_prompt": video_prompt,
+            "style_image_url": style_image_url,
+            "image_url": str(ref.get("image_url") or ""),
+            "video_url": str(ref.get("video_url") or ""),
+        }
+
+    return {"status": "success", "records": records}
+
+
 @router.post("/upload-reference")
 async def upload_reference_image(
     file: UploadFile = File(...),
@@ -436,58 +589,6 @@ async def generate_content(
         script_data = episode.ai_config["generated_script"]
         characters = script_data.get("characters", [])
         scenes = script_data.get("scenes", [])
-        # Helper to determine context based on prompt structure
-        storyboard_marker = "[分镜列表]"
-        storyboard_index = req.prompt.find(storyboard_marker)
-
-        def replace_tag(match):
-            tag_type = match.group(1)  # char or scene
-            tag_suffix = match.group(2)  # The ID part after the prefix
-
-            # Normalize tag_type 'character' to 'char'
-            if tag_type == "character":
-                tag_type = "char"
-
-            # Construct possible IDs to check
-            possible_ids = [tag_suffix]
-            if tag_type == "char":
-                possible_ids.append(f"char_{tag_suffix}")
-            elif tag_type == "scene":
-                possible_ids.append(f"scene_{tag_suffix}")
-
-            # Check if this tag appears after [分镜列表]
-            is_in_storyboard_list = False
-            if storyboard_index != -1 and match.start() > storyboard_index:
-                is_in_storyboard_list = True
-
-            if tag_type == "char":
-                # Find character
-                char = next(
-                    (c for c in characters if str(c.get("id")) in possible_ids), None
-                )
-                if char:
-                    if req.type == "text":
-                        return char.get("name", "未知角色")
-                    elif is_in_storyboard_list:
-                        return char.get("name", "未知角色")
-                    else:
-                        return f"[{char.get('name', '未知角色')}: {char.get('description', '')}]"
-                return match.group(0)
-
-            elif tag_type == "scene":
-                scene = next(
-                    (s for s in scenes if str(s.get("id")) in possible_ids), None
-                )
-                if scene:
-                    if req.type == "text":
-                        return scene.get("location_name", "未知场景")
-                    elif is_in_storyboard_list:
-                        return scene.get("location_name", "未知场景")
-                    else:
-                        return f"[{scene.get('location_name', '未知场景')}: {scene.get('mood', '')}]"
-                return match.group(0)
-
-            return match.group(0)
         referenced_images = []
 
         if req.type != "text":
@@ -523,8 +624,10 @@ async def generate_content(
                         )
                     referenced_images.append(item.get("image_url"))
 
-        req.prompt = re.sub(
-            r"\{\{(char|character|scene)_([a-zA-Z0-9_]+)\}\}", replace_tag, req.prompt
+        req.prompt = AIEngine.resolve_prompt_tags(
+            req.prompt,
+            script_data,
+            text_mode=req.type == "text",
         )
 
         if req.type != "text" and referenced_images:

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { Trash2, MapPin, Maximize2, Image as ImageIcon, Plus, Upload } from 'lucide-vue-next'
 import NeuButton from '@/components/base/NeuButton.vue'
 import { resolveImageUrl } from '@/utils/assets'
 import { useI18n } from 'vue-i18n'
 
-defineProps<{
+const props = defineProps<{
   scenes: any[]
   generatingItems: Record<string, number>
 }>()
@@ -20,28 +20,138 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
-const uploadInputs = ref<(HTMLInputElement | null)[]>([])
+const pasteTargetIndex = ref<number | null>(null)
+const uploadModalVisible = ref(false)
+const uploadModalTargetIndex = ref<number | null>(null)
+const uploadModalPreviewUrl = ref('')
+const uploadModalExistingUrl = ref('')
+const uploadModalFile = ref<File | null>(null)
+const uploadModalInput = ref<HTMLInputElement | null>(null)
 
-const triggerUpload = (index: number) => {
-  uploadInputs.value[index]?.click()
+const setPasteTarget = (index: number) => {
+  pasteTargetIndex.value = index
 }
 
-const handleFileChange = (event: Event, item: any, index: number) => {
+const clearUploadModalFile = () => {
+  if (uploadModalPreviewUrl.value) {
+    URL.revokeObjectURL(uploadModalPreviewUrl.value)
+  }
+  uploadModalPreviewUrl.value = ''
+  uploadModalFile.value = null
+  if (uploadModalInput.value) {
+    uploadModalInput.value.value = ''
+  }
+}
+
+const openUploadModal = (index: number) => {
+  setPasteTarget(index)
+  uploadModalTargetIndex.value = index
+  clearUploadModalFile()
+  const target = props.scenes[index]
+  uploadModalExistingUrl.value = target?.reference_image
+    ? resolveImageUrl(target.reference_image)
+    : ''
+  uploadModalVisible.value = true
+}
+
+const closeUploadModal = () => {
+  uploadModalVisible.value = false
+  uploadModalTargetIndex.value = null
+  uploadModalExistingUrl.value = ''
+  clearUploadModalFile()
+}
+
+const setUploadModalFile = (file: File) => {
+  clearUploadModalFile()
+  uploadModalFile.value = file
+  uploadModalPreviewUrl.value = URL.createObjectURL(file)
+}
+
+const triggerUploadModalSelect = () => {
+  uploadModalInput.value?.click()
+}
+
+const handleUploadModalFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
   if (file) {
-    emit('upload-reference', item, index, file)
+    setUploadModalFile(file)
   }
   if (target) {
     target.value = ''
   }
 }
+
+const confirmUploadModal = () => {
+  const index = uploadModalTargetIndex.value
+  const file = uploadModalFile.value
+  if (index === null || !file) return
+  const item = props.scenes[index]
+  if (!item) return
+  emit('upload-reference', item, index, file)
+  closeUploadModal()
+}
+
+const isEditableElement = (el: EventTarget | null): boolean => {
+  const node = el as HTMLElement | null
+  if (!node) return false
+  const tag = node.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || node.isContentEditable
+}
+
+const handlePaste = (event: ClipboardEvent) => {
+  if (!uploadModalVisible.value) return
+  if (isEditableElement(event.target) || isEditableElement(document.activeElement)) return
+
+  const items = event.clipboardData?.items
+  if (!items) return
+
+  for (const item of items) {
+    if (!item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (!file) continue
+
+    event.preventDefault()
+    setUploadModalFile(file)
+    break
+  }
+}
+
+watch(
+  () => props.scenes.length,
+  (len) => {
+    if (len <= 0) {
+      pasteTargetIndex.value = null
+      return
+    }
+    if (pasteTargetIndex.value === null || pasteTargetIndex.value >= len) {
+      pasteTargetIndex.value = 0
+    }
+  },
+  { immediate: true }
+)
+
+onMounted(() => {
+  window.addEventListener('paste', handlePaste)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('paste', handlePaste)
+  clearUploadModalFile()
+})
 </script>
 
 <template>
   <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5">
-      <div v-for="(scene, idx) in scenes" :key="idx" class="neu-flat p-3 rounded-xl transition-transform flex flex-col relative group">
-          <button 
+      <div
+        v-for="(scene, idx) in scenes"
+        :key="idx"
+        class="neu-flat p-3 rounded-xl transition-transform flex flex-col relative group"
+        :class="pasteTargetIndex === idx ? 'ring-1 ring-orange-300/80' : ''"
+        @mouseenter="setPasteTarget(idx)"
+        @mousedown.capture="setPasteTarget(idx)"
+      >
+          <button
               class="absolute top-2 right-2 p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100 z-10"
               @click.stop="emit('delete', idx, scene)"
           >
@@ -54,9 +164,9 @@ const handleFileChange = (event: Event, item: any, index: number) => {
               </div>
               <span class="text-[10px] font-bold text-gray-400">{{ t('workbench.scriptScenes.sceneNumber', { number: idx + 1 }) }}</span>
           </div>
-          
+
           <!-- Scene Card with Image & Overlay -->
-          <div 
+          <div
             class="mb-3 rounded-lg overflow-hidden relative group cursor-pointer border border-gray-200 bg-gray-100"
             style="aspect-ratio: 16/9;"
             @click="emit('preview', idx)"
@@ -67,7 +177,12 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                 {{ t('workbench.scriptScenes.noImage') }}
              </div>
 
-             <div v-if="scene.reference_image && !scene.image_url" class="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-semibold bg-orange-100/90 text-orange-700 border border-orange-200 rounded">
+             <div
+               v-if="scene.reference_image"
+               class="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-semibold bg-orange-100/90 text-orange-700 border border-orange-200 rounded cursor-pointer hover:bg-orange-200/90 transition-colors"
+               :title="t('workbench.scriptScenes.referenceImage')"
+               @click.stop="openUploadModal(idx)"
+             >
                 {{ t('workbench.scriptScenes.reference') }}
              </div>
 
@@ -77,18 +192,18 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                    {{ scene.visual_prompt }}
                 </p>
              </div>
-             
+
              <!-- Maximize Icon -->
              <div class="absolute top-2 right-2 p-1.5 bg-black/30 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity">
                 <Maximize2 class="w-3 h-3" />
              </div>
           </div>
-          
+
           <!-- Action Button / Progress Bar -->
           <div class="mt-auto w-full">
               <div v-if="generatingItems[`scenes-${idx}`] !== undefined" class="relative h-8 rounded-xl bg-gray-200/50 overflow-hidden border border-gray-300/50 flex items-center justify-center">
                   <!-- Animated Progress Bar -->
-                  <div 
+                  <div
                       class="absolute inset-y-0 left-0 bg-orange-400/20 transition-all duration-300 ease-linear"
                       :style="{ width: `${generatingItems[`scenes-${idx}`]}%` }"
                   ></div>
@@ -98,25 +213,18 @@ const handleFileChange = (event: Event, item: any, index: number) => {
                       <span class="text-[10px] font-bold text-orange-600 tabular-nums">{{ generatingItems[`scenes-${idx}`] }}%</span>
                   </div>
               </div>
-              
+
               <div v-else class="flex gap-2">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    class="hidden"
-                    :ref="(el) => (uploadInputs[idx] = el as HTMLInputElement)"
-                    @change="(e) => handleFileChange(e, scene, idx)"
-                  />
                   <NeuButton
                     size="sm"
                     class="flex-1 text-xs"
-                    @click="triggerUpload(idx)"
-                    :title="t('workbench.scriptScenes.referenceImage')"
-                    :aria-label="t('workbench.scriptScenes.referenceImage')"
+                    @click="openUploadModal(idx)"
+                    :title="`${t('workbench.scriptScenes.referenceImage')} (Ctrl+V)`"
+                    :aria-label="`${t('workbench.scriptScenes.referenceImage')} (Ctrl+V)`"
                   >
                      <Upload class="w-3.5 h-3.5" />
                   </NeuButton>
-                  <NeuButton 
+                  <NeuButton
                     size="sm"
                     class="flex-1 text-xs"
                     @click="emit('generate', 'image', scene, idx)"
@@ -130,7 +238,7 @@ const handleFileChange = (event: Event, item: any, index: number) => {
       </div>
 
       <!-- Add Scene Button -->
-      <button 
+      <button
          class="neu-flat p-3 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50/50 transition-all border-2 border-dashed border-gray-300/50 hover:border-orange-300 min-h-[200px]"
          @click="emit('add')"
       >
@@ -140,4 +248,63 @@ const handleFileChange = (event: Event, item: any, index: number) => {
          <span class="text-xs font-bold">{{ t('workbench.scriptScenes.addScene') }}</span>
       </button>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="uploadModalVisible"
+      class="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+      @click.self="closeUploadModal"
+    >
+      <div class="w-[360px] max-w-[92vw] bg-[#fdfbf7] border border-gray-200 shadow-2xl rounded-xl p-4">
+        <h4 class="text-base font-bold text-gray-700 mb-3">{{ t('workbench.scriptScenes.uploadReferenceTitle') }}</h4>
+
+        <div
+          class="aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100 cursor-pointer"
+          @click="triggerUploadModalSelect"
+        >
+          <img
+            v-if="uploadModalPreviewUrl || uploadModalExistingUrl"
+            :src="uploadModalPreviewUrl || uploadModalExistingUrl"
+            class="w-full h-full object-cover"
+          />
+          <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+            <Upload class="w-7 h-7" />
+            <span class="text-xs font-semibold">{{ t('workbench.scriptScenes.clickToSelectReference') }}</span>
+          </div>
+          <input
+            ref="uploadModalInput"
+            type="file"
+            accept="image/*"
+            class="hidden"
+            @change="handleUploadModalFileChange"
+          />
+        </div>
+
+        <p class="text-[11px] text-gray-500 mt-2">
+          {{
+            uploadModalExistingUrl && !uploadModalFile
+              ? t('workbench.scriptScenes.currentReferenceHint')
+              : t('workbench.scriptScenes.pasteHint')
+          }}
+        </p>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            class="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+            @click="closeUploadModal"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <NeuButton
+            size="sm"
+            :disabled="!uploadModalFile"
+            @click="confirmUploadModal"
+          >
+            <Upload class="w-3.5 h-3.5 mr-1" />
+            {{ t('workbench.scriptScenes.uploadAction') }}
+          </NeuButton>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>

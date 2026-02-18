@@ -173,6 +173,86 @@ class AIEngine:
 
         return url
 
+    @staticmethod
+    def resolve_prompt_tags(prompt: str, script_data: Optional[dict], text_mode: bool = False) -> str:
+        prompt_text = str(strip_think_segments(prompt or "")).strip()
+        if not prompt_text or not isinstance(script_data, dict):
+            return prompt_text
+
+        characters = script_data.get("characters", [])
+        scenes = script_data.get("scenes", [])
+        storyboard_marker = "[分镜列表]"
+        storyboard_index = prompt_text.find(storyboard_marker)
+
+        def replace_tag(match):
+            tag_type = match.group(1)
+            tag_suffix = match.group(2)
+            if tag_type == "character":
+                tag_type = "char"
+
+            possible_ids = [tag_suffix]
+            if tag_type == "char":
+                possible_ids.append(f"char_{tag_suffix}")
+            elif tag_type == "scene":
+                possible_ids.append(f"scene_{tag_suffix}")
+
+            is_in_storyboard_list = (
+                storyboard_index != -1 and match.start() > storyboard_index
+            )
+
+            if tag_type == "char":
+                char = next(
+                    (c for c in characters if str(c.get("id")) in possible_ids),
+                    None,
+                )
+                if char:
+                    if text_mode or is_in_storyboard_list:
+                        return char.get("name", "未知角色")
+                    return f"[{char.get('name', '未知角色')}: {char.get('description', '')}]"
+                return match.group(0)
+
+            if tag_type == "scene":
+                scene = next(
+                    (s for s in scenes if str(s.get("id")) in possible_ids),
+                    None,
+                )
+                if scene:
+                    if text_mode or is_in_storyboard_list:
+                        return scene.get("location_name", "未知场景")
+                    return f"[{scene.get('location_name', '未知场景')}: {scene.get('mood', '')}]"
+                return match.group(0)
+
+            return match.group(0)
+
+        return re.sub(
+            r"\{\{(char|character|scene)_([a-zA-Z0-9_]+)\}\}",
+            replace_tag,
+            prompt_text,
+        )
+
+    @staticmethod
+    def build_video_request_prompt(prompt: str, video_config: Optional[dict] = None) -> str:
+        prompt_text = str(sanitize_think_payload(prompt) if prompt else "").strip()
+        if not prompt_text:
+            return ""
+
+        cfg = video_config if isinstance(video_config, dict) else {}
+        prompt_prefixes: List[str] = []
+        if cfg.get("remove_bgm") and "无背景音乐" not in prompt_text:
+            prompt_prefixes.append("无背景音乐")
+        if cfg.get("keep_voice") and "保留人物声音" not in prompt_text:
+            prompt_prefixes.append("保留人物声音")
+        if cfg.get("keep_sfx") and "保留人物音效" not in prompt_text:
+            prompt_prefixes.append("保留人物音效")
+        voice_language = cfg.get("voice_language")
+        if voice_language and voice_language not in {"不指定", "unspecified"}:
+            lang_prompt = f"{voice_language}配音"
+            if lang_prompt not in prompt_text:
+                prompt_prefixes.append(lang_prompt)
+        if prompt_prefixes:
+            prompt_text = f"{'，'.join(prompt_prefixes)}。\n{prompt_text}"
+        return prompt_text
+
 
     def _init_client_and_model(self, type="text"):
         config = self.config.get(type, {})
@@ -287,20 +367,7 @@ class AIEngine:
 
             if media_type == "video":
                 video_config = self.config.get("video", {}) if isinstance(self.config, dict) else {}
-                prompt_prefixes = []
-                if video_config.get("remove_bgm") and "无背景音乐" not in prompt:
-                    prompt_prefixes.append("无背景音乐")
-                if video_config.get("keep_voice") and "保留人物声音" not in prompt:
-                    prompt_prefixes.append("保留人物声音")
-                if video_config.get("keep_sfx") and "保留人物音效" not in prompt:
-                    prompt_prefixes.append("保留人物音效")
-                voice_language = video_config.get("voice_language")
-                if voice_language and voice_language not in {"不指定", "unspecified"}:
-                    lang_prompt = f"{voice_language}配音"
-                    if lang_prompt not in prompt:
-                        prompt_prefixes.append(lang_prompt)
-                if prompt_prefixes:
-                    prompt = f"{'，'.join(prompt_prefixes)}。{prompt}"
+                prompt = self.build_video_request_prompt(prompt, video_config)
 
                 headers.pop("Content-Type", None)
 
@@ -647,6 +714,7 @@ class AIEngine:
                     "size": "16x9",
                     "n": 1,
                 }
+                provider_prompt = prompt
     
                 if data and "category" in data:
                     category = data["category"]
@@ -723,6 +791,7 @@ class AIEngine:
                         else:
                             payload["image"] = [style_image_base64, template_base64] if style_image_base64 else [template_base64]
                             payload["prompt"] = f"使用第一张图片的图片风格，以第二张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。 {prompt}" if style_image_base64 else f"使用这张图片作为生成模板生成目标图片，并始终保持模板的第一格为黑幕。{prompt}"
+                provider_prompt = str(payload.get("prompt") or prompt)
     
                 yield self._format_sse("backend_log", "Submitting image generation request...")
 
@@ -768,11 +837,20 @@ class AIEngine:
                 f.write(img_res.content)
 
             asset_url = f"/assets/{filename}"
+            asset_meta = {
+                "prompt": prompt,
+                "provider_prompt": provider_prompt if media_type == "image" else prompt,
+                "source_url": image_url,
+            }
+            if media_type == "video":
+                asset_meta["video_request_prompt"] = prompt
+            if style and getattr(style, "image_url", None):
+                asset_meta["style_image_url"] = str(style.image_url)
             new_asset = Asset(
                 episode_id=self.episode.id if self.episode else 0,
                 type=media_type,
                 url=asset_url,
-                meta_data={"prompt": prompt, "source_url": image_url},
+                meta_data=asset_meta,
             )
             self.db.add(new_asset)
             self.db.commit()
@@ -790,6 +868,10 @@ class AIEngine:
                     "url": full_display_url,
                     "type": media_type,
                     "prompt": prompt,
+                    "input_prompt": prompt,
+                    "final_prompt": provider_prompt if media_type == "image" else prompt,
+                    "provider_prompt": provider_prompt if media_type == "image" else prompt,
+                    "video_request_prompt": prompt if media_type == "video" else "",
                 },
             )
 
