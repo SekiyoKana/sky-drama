@@ -5,10 +5,13 @@ import NeuButton from '@/components/base/NeuButton.vue'
 import { resolveImageUrl } from '@/utils/assets'
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   characters: any[]
   generatingItems: Record<string, number>
-}>()
+  enableMentionDrag?: boolean
+}>(), {
+  enableMentionDrag: true
+})
 
 const emit = defineEmits<{
   (e: 'delete', index: number, item: any): void
@@ -29,6 +32,23 @@ const uploadModalInput = ref<HTMLInputElement | null>(null)
 
 const setPasteTarget = (index: number) => {
   pasteTargetIndex.value = index
+}
+
+const handleDragStart = (event: DragEvent, char: any) => {
+  if (!props.enableMentionDrag || !event.dataTransfer) return
+  const payload = {
+    type: 'character',
+    id: String(char?.id || ''),
+    name: String(char?.name || ''),
+    role: String(char?.role || ''),
+    description: String(char?.description || ''),
+    image_url: String(char?.image_url || char?.reference_image || '')
+  }
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData('application/x-sky-mention', JSON.stringify(payload))
+  event.dataTransfer.setData('text/x-sky-mention', JSON.stringify(payload))
+  event.dataTransfer.setData('text/plain', `@${payload.name}`)
+  event.dataTransfer.setData('text', `@${payload.name}`)
 }
 
 const clearUploadModalFile = () => {
@@ -149,6 +169,8 @@ onUnmounted(() => {
       :class="pasteTargetIndex === idx ? 'ring-1 ring-blue-300/80' : ''"
       @mouseenter="setPasteTarget(idx)"
       @mousedown.capture="setPasteTarget(idx)"
+      :draggable="props.enableMentionDrag"
+      @dragstart="(event) => handleDragStart(event, char)"
     >
       
       <button 

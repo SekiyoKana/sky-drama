@@ -246,7 +246,28 @@ const jaJP = {
       saveFailed: '小説設定の保存に失敗しました',
       nameRequired: '名前は必須です',
       characterCreated: 'キャラクターを作成しました',
-      sceneCreated: 'シーンを作成しました'
+      sceneCreated: 'シーンを作成しました',
+      briefRequired: 'まず章の概要を入力してください',
+      selectConnection: '先に API 接続を選択してください',
+      selectModel: '先にモデルを選択してください',
+      selectImageConnection: '先に画像生成ソースを選択してください',
+      selectImageModel: '先に画像生成モデルを選択してください',
+      planReady: '章の計画を作成しました。確認して執筆を開始できます',
+      planFailed: '章計画の生成に失敗しました',
+      planParseFailed: '計画結果を解析できませんでした。再計画してください',
+      chapterGenerated: '章本文を生成しました',
+      chapterGenerateFailed: '章本文の生成に失敗しました',
+      noSelection: '先に本文で対象テキストを選択してください',
+      rewritePendingDecision: '先に現在の書き換え結果を確定または取り消してください',
+      rewritePreviewReady: '書き換えプレビューを生成しました。確定または取り消しを選択してください',
+      rewriteDone: '選択テキストを更新しました',
+      rewriteFailed: '拡張アシスタントの実行に失敗しました',
+      imageGenerating: '参照画像を生成中...',
+      imageGenerated: '参照画像を生成しました',
+      imageGenerateFailed: '参照画像の生成に失敗しました',
+      emptyAiResult: 'AI から有効な出力がありませんでした',
+      deleteCrossUsageConfirm: 'この{target}はエピソードワークベンチでまだ参照されています：\n{usages}\n\n削除を続行しますか？',
+      deleteSaveFailed: '削除後の保存に失敗しました。再試行してください。'
     },
     types: {
       character: 'キャラクター',
@@ -274,9 +295,11 @@ const jaJP = {
     detail: {
       typeLabel: 'タイプ',
       sourceLabel: 'ソース',
+      mentionTagLabel: '参照タグ',
       roleLabel: '役割',
       moodLabel: '雰囲気',
       descriptionLabel: '説明',
+      promptLabel: '画像生成プロンプト',
       empty: 'なし'
     },
     config: {
@@ -284,7 +307,17 @@ const jaJP = {
       perspective: '視点',
       tone: '文体',
       length: '章の長さ',
-      temperature: '創造性'
+      temperature: '創造性',
+      imageSource: '画像生成ソース',
+      imageModel: '画像生成モデル'
+    },
+    configTags: {
+      text: 'テキスト',
+      image: '画像'
+    },
+    card: {
+      detail: '詳細',
+      generateImage: '生成'
     },
     perspectives: {
       first: '一人称',
@@ -300,6 +333,44 @@ const jaJP = {
       short: '短め',
       medium: '中くらい',
       long: '長め'
+    },
+    assistant: {
+      title: 'AI生成アシスタント',
+      briefLabel: 'この章の概要',
+      briefPlaceholder: '章の目的、対立、要点を入力してください。先にスノーフレーク計画を作成します。',
+      wordCountLabel: '目標文字数',
+      planAction: '計画を生成',
+      replanAction: '再計画',
+      confirmAction: '確定して執筆',
+      cancelAction: 'キャンセル',
+      planning: '計画中...',
+      writing: '執筆中...',
+      oneSentenceLabel: '一文コア要約',
+      summaryLabel: '章サマリー',
+      beatsLabel: '展開ビート',
+      charactersLabel: '登場人物',
+      scenesLabel: '登場シーン',
+      suggestedCharacters: '推奨人物: {names}',
+      suggestedScenes: '推奨シーン: {names}'
+    },
+    rewrite: {
+      title: '拡張アシスタント',
+      selectedLabel: '選択テキスト',
+      modeLabel: '処理モード',
+      modeExpand: '拡張',
+      modeRewrite: '書き換え',
+      instructionLabel: '修正指示',
+      instructionPlaceholder: '例: 心理描写を増やし、テンポを落として、重要な台詞は維持する。',
+      targetWordsLabel: '目標文字数（任意）',
+      targetWordsHint: 'ここに文字数を入力',
+      targetWordsPlaceholder: '目標文字数（任意）',
+      autoHint: 'ヒント: 選択後に右クリックで即時起動、または 10 秒静置で自動起動。',
+      applyExpand: '拡張を実行',
+      applyRewrite: '書き換えを実行',
+      previewReady: '書き換えプレビューを生成しました',
+      undoAction: '取り消し',
+      confirmAction: '確定',
+      processing: '処理中...'
     }
   },
   workbench: {
@@ -502,7 +573,8 @@ const jaJP = {
         generateFailed: '生成に失敗しました',
         referenceUploaded: '参照画像をアップロードしました',
         referenceUploadedButSaveFailed: '参照画像はアップロード済みですが、保存に失敗しました。再試行してください。',
-        uploadFailed: 'アップロードに失敗しました'
+        uploadFailed: 'アップロードに失敗しました',
+        crossWorkspaceDeleteConfirm: 'この{target}は小説ワークベンチでまだ参照されています：\n{usages}\n\n削除を続行しますか？'
       }
     },
     scriptCharacters: {

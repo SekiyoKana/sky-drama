@@ -246,7 +246,28 @@ const enUS = {
       saveFailed: 'Failed to save novel settings',
       nameRequired: 'Name is required',
       characterCreated: 'Character created',
-      sceneCreated: 'Scene created'
+      sceneCreated: 'Scene created',
+      briefRequired: 'Please enter the chapter brief first',
+      selectConnection: 'Please select an API connection first',
+      selectModel: 'Please select a model first',
+      selectImageConnection: 'Please select an image generation source',
+      selectImageModel: 'Please select an image model',
+      planReady: 'Chapter plan generated. Confirm to continue writing',
+      planFailed: 'Failed to generate chapter plan',
+      planParseFailed: 'Failed to parse plan result. Please regenerate',
+      chapterGenerated: 'Chapter draft generated',
+      chapterGenerateFailed: 'Failed to generate chapter draft',
+      noSelection: 'Please select text in the editor first',
+      rewritePendingDecision: 'Please confirm or undo the current rewrite result first',
+      rewritePreviewReady: 'Rewrite preview is ready. Confirm or undo it',
+      rewriteDone: 'Selected text updated',
+      rewriteFailed: 'Expansion assistant failed',
+      imageGenerating: 'Generating reference image...',
+      imageGenerated: 'Reference image generated',
+      imageGenerateFailed: 'Failed to generate reference image',
+      emptyAiResult: 'AI did not return valid content',
+      deleteCrossUsageConfirm: 'This {target} is still referenced in episode workbench:\n{usages}\n\nDo you want to continue deleting?',
+      deleteSaveFailed: 'Failed to save after deletion. Please retry.'
     },
     types: {
       character: 'Character',
@@ -274,9 +295,11 @@ const enUS = {
     detail: {
       typeLabel: 'Type',
       sourceLabel: 'Source',
+      mentionTagLabel: 'Mention Tag',
       roleLabel: 'Role',
       moodLabel: 'Mood',
       descriptionLabel: 'Description',
+      promptLabel: 'Image Prompt',
       empty: 'N/A'
     },
     config: {
@@ -284,7 +307,17 @@ const enUS = {
       perspective: 'Perspective',
       tone: 'Tone',
       length: 'Chapter Length',
-      temperature: 'Creativity'
+      temperature: 'Creativity',
+      imageSource: 'Image Source',
+      imageModel: 'Image Model'
+    },
+    configTags: {
+      text: 'Text',
+      image: 'Image'
+    },
+    card: {
+      detail: 'Details',
+      generateImage: 'Generate'
     },
     perspectives: {
       first: 'First Person',
@@ -300,6 +333,44 @@ const enUS = {
       short: 'Short',
       medium: 'Medium',
       long: 'Long'
+    },
+    assistant: {
+      title: 'AI Generation Assistant',
+      briefLabel: 'Chapter Brief',
+      briefPlaceholder: 'Describe the chapter goal, conflict, or key idea. The assistant will plan first using Snowflake.',
+      wordCountLabel: 'Target Words',
+      planAction: 'Generate Plan',
+      replanAction: 'Re-plan',
+      confirmAction: 'Confirm & Write',
+      cancelAction: 'Cancel',
+      planning: 'Planning...',
+      writing: 'Writing...',
+      oneSentenceLabel: 'One-sentence Core',
+      summaryLabel: 'Chapter Summary',
+      beatsLabel: 'Story Beats',
+      charactersLabel: 'Characters',
+      scenesLabel: 'Scenes',
+      suggestedCharacters: 'Suggested characters: {names}',
+      suggestedScenes: 'Suggested scenes: {names}'
+    },
+    rewrite: {
+      title: 'Expansion Assistant',
+      selectedLabel: 'Selected Text',
+      modeLabel: 'Mode',
+      modeExpand: 'Expand',
+      modeRewrite: 'Rewrite',
+      instructionLabel: 'Instructions',
+      instructionPlaceholder: 'Example: Add inner thoughts, slow pacing, keep key dialogue.',
+      targetWordsLabel: 'Target Words (Optional)',
+      targetWordsHint: 'Enter word count here',
+      targetWordsPlaceholder: 'Target words (optional)',
+      autoHint: 'Tip: Right-click selected text to open immediately, or wait 10 seconds.',
+      applyExpand: 'Apply Expansion',
+      applyRewrite: 'Apply Rewrite',
+      previewReady: 'Rewrite preview generated',
+      undoAction: 'Undo',
+      confirmAction: 'Confirm',
+      processing: 'Processing...'
     }
   },
   workbench: {
@@ -502,7 +573,8 @@ const enUS = {
         generateFailed: 'Generation failed',
         referenceUploaded: 'Reference image uploaded',
         referenceUploadedButSaveFailed: 'Reference image uploaded, but saving failed. Please retry.',
-        uploadFailed: 'Upload failed'
+        uploadFailed: 'Upload failed',
+        crossWorkspaceDeleteConfirm: 'This {target} is still referenced in novel workbench:\n{usages}\n\nDo you want to continue deleting?'
       }
     },
     scriptCharacters: {

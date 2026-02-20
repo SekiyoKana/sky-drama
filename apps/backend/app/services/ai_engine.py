@@ -255,10 +255,22 @@ class AIEngine:
 
 
     def _init_client_and_model(self, type="text"):
-        config = self.config.get(type, {})
+        config: Dict[str, Any] = {}
+        if isinstance(self.config, dict):
+            if type == "text":
+                candidate_keys = ["text", "novel"]
+            else:
+                candidate_keys = [type, "text", "novel"]
 
-        if not config.get("key_id"):
-            config = self.config.get("text", {})
+            for key in candidate_keys:
+                candidate = self.config.get(key, {})
+                if not isinstance(candidate, dict):
+                    continue
+                if not config:
+                    config = candidate
+                if candidate.get("key_id"):
+                    config = candidate
+                    break
 
         key_id = config.get("key_id")
         model_name = config.get("model")

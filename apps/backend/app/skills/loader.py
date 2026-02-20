@@ -23,7 +23,10 @@ def load_skills():
         "short_video_storyboard_maker",
         "short_video_prompt_engineer",
         "short_video_sora2_prompt",
-        "short_video_asset_generator"
+        "short_video_asset_generator",
+        "novel_snowflake_planner",
+        "novel_chapter_writer",
+        "novel_expansion_assistant",
     ]
     
     for subdir in known_skills:

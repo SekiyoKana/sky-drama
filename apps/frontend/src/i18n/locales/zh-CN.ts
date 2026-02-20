@@ -246,7 +246,28 @@ const zhCN = {
       saveFailed: '保存小说设置失败',
       nameRequired: '名称不能为空',
       characterCreated: '人物已创建',
-      sceneCreated: '场景已创建'
+      sceneCreated: '场景已创建',
+      briefRequired: '请先输入本章简介',
+      selectConnection: '请先选择 API 连接',
+      selectModel: '请先选择模型',
+      selectImageConnection: '请先选择图片生成源',
+      selectImageModel: '请先选择图片生成模型',
+      planReady: '章节规划已生成，请确认后写作',
+      planFailed: '章节规划生成失败',
+      planParseFailed: '规划结果解析失败，请重新规划',
+      chapterGenerated: '章节正文已生成',
+      chapterGenerateFailed: '章节正文生成失败',
+      noSelection: '请先在正文中选中需要处理的文本',
+      rewritePendingDecision: '请先确认或撤销当前改写结果',
+      rewritePreviewReady: '已生成修改预览，请确认或撤销',
+      rewriteDone: '选中文本已更新',
+      rewriteFailed: '扩写助手执行失败',
+      imageGenerating: '正在生成参考图...',
+      imageGenerated: '参考图已生成',
+      imageGenerateFailed: '参考图生成失败',
+      emptyAiResult: 'AI 未返回有效内容',
+      deleteCrossUsageConfirm: '该{target}在剧集工作台仍有引用：\n{usages}\n\n是否继续删除？',
+      deleteSaveFailed: '删除后保存失败，请重试'
     },
     types: {
       character: '角色',
@@ -274,9 +295,11 @@ const zhCN = {
     detail: {
       typeLabel: '类型',
       sourceLabel: '来源',
+      mentionTagLabel: '引用标签',
       roleLabel: '角色标签',
       moodLabel: '场景氛围',
       descriptionLabel: '描述',
+      promptLabel: '图片生成提示词',
       empty: '暂无'
     },
     config: {
@@ -284,7 +307,17 @@ const zhCN = {
       perspective: '叙事视角',
       tone: '文风',
       length: '章节长度',
-      temperature: '创造性'
+      temperature: '创造性',
+      imageSource: '图片生成源',
+      imageModel: '图片生成模型'
+    },
+    configTags: {
+      text: '文本',
+      image: '图片'
+    },
+    card: {
+      detail: '详情',
+      generateImage: '生成图'
     },
     perspectives: {
       first: '第一人称',
@@ -300,6 +333,44 @@ const zhCN = {
       short: '短篇',
       medium: '中篇',
       long: '长篇'
+    },
+    assistant: {
+      title: 'AI生成助手',
+      briefLabel: '本章节简介',
+      briefPlaceholder: '输入本章核心剧情、冲突或目标，助手将先做雪花规划。',
+      wordCountLabel: '目标字数',
+      planAction: '生成规划',
+      replanAction: '重新规划',
+      confirmAction: '确认并写作',
+      cancelAction: '取消',
+      planning: '规划中...',
+      writing: '写作中...',
+      oneSentenceLabel: '一句话核心梗概',
+      summaryLabel: '章节摘要',
+      beatsLabel: '剧情节拍',
+      charactersLabel: '登场角色',
+      scenesLabel: '登场场景',
+      suggestedCharacters: '建议角色：{names}',
+      suggestedScenes: '建议场景：{names}'
+    },
+    rewrite: {
+      title: '扩写助手',
+      selectedLabel: '选中文本',
+      modeLabel: '处理模式',
+      modeExpand: '扩写',
+      modeRewrite: '改写',
+      instructionLabel: '修改建议',
+      instructionPlaceholder: '例如：加强心理描写，节奏更慢，保留关键对白。',
+      targetWordsLabel: '目标字数（可选）',
+      targetWordsHint: '此处填写字数',
+      targetWordsPlaceholder: '填写字数（可选）',
+      autoHint: '提示：选中文本后右键可立即唤起，或静置 10 秒自动唤起。',
+      applyExpand: '执行扩写',
+      applyRewrite: '执行改写',
+      previewReady: '已生成修改片段',
+      undoAction: '撤销',
+      confirmAction: '确认',
+      processing: '处理中...'
     }
   },
   workbench: {
@@ -502,7 +573,8 @@ const zhCN = {
         generateFailed: '生成失败',
         referenceUploaded: '参考图已上传',
         referenceUploadedButSaveFailed: '参考图已上传，但保存失败，请重试',
-        uploadFailed: '上传失败'
+        uploadFailed: '上传失败',
+        crossWorkspaceDeleteConfirm: '该{target}在小说工作台仍有引用：\n{usages}\n\n是否继续删除？'
       }
     },
     scriptCharacters: {

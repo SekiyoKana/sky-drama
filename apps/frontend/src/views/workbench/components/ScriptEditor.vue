@@ -14,7 +14,7 @@ import { sanitizeThinkPayload, stripThinkTags } from '@/utils/thinkFilter'
 import BookPreview from './BookPreview.vue'
 import CharacterCreateModal from './CharacterCreateModal.vue'
 import VideoPreviewModal from './VideoPreviewModal.vue'
-import { aiApi } from '@/api'
+import { aiApi, episodeApi } from '@/api'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -181,6 +181,95 @@ const handleCharConfirm = (charData: any) => {
     emit('request-save')
 }
 
+const normalizeEntityId = (type: 'chars' | 'scenes', rawId: string) => {
+    const idText = String(rawId || '').trim()
+    const prefix = type === 'chars' ? 'char_' : 'scene_'
+    return idText.startsWith(prefix) ? idText : `${prefix}${idText}`
+}
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const hasEntityReference = (text: string, entityId: string) => {
+    const raw = String(text || '')
+    if (!raw || !entityId) return false
+    const escaped = escapeRegExp(entityId)
+    const mentionRe = new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`)
+    const plainRe = new RegExp(`(^|[^A-Za-z0-9_])${escaped}([^A-Za-z0-9_]|$)`)
+    return mentionRe.test(raw) || plainRe.test(raw)
+}
+
+const hasNamedMentionReference = (text: string, entityName: string) => {
+    const raw = String(text || '')
+    const name = String(entityName || '').trim()
+    if (!raw || !name) return false
+    const escaped = escapeRegExp(name)
+    const mentionRe = new RegExp(`(^|[^A-Za-z0-9_])@${escaped}([^A-Za-z0-9_]|$)`)
+    return mentionRe.test(raw)
+}
+
+const collectNovelUsagePaths = async (type: 'chars' | 'scenes', rawId: string) => {
+    const targetId = normalizeEntityId(type, rawId)
+    const out = new Set<string>()
+    try {
+        const rows: any = await episodeApi.list(Number(route.params.projectId))
+        const list = Array.isArray(rows) ? rows : (Array.isArray(rows?.data) ? rows.data : [])
+        const current = list.find((row: any) => Number(row?.id) === Number(route.params.episodeId))
+        const novel = current?.ai_config?.novel
+        if (!novel || typeof novel !== 'object') return []
+
+        const configRows = Array.isArray(novel[type === 'chars' ? 'characters' : 'scenes'])
+            ? novel[type === 'chars' ? 'characters' : 'scenes']
+            : []
+        const matchedRow = configRows.find((row: any) => normalizeEntityId(type, String(row?.id || '')) === targetId)
+        const targetName = String(
+            type === 'chars'
+                ? matchedRow?.name
+                : (matchedRow?.location_name || matchedRow?.name)
+        ).trim()
+
+        if (
+            hasEntityReference(String(novel.draft_text || ''), targetId) ||
+            hasNamedMentionReference(String(novel.draft_text || ''), targetName)
+        ) {
+            out.add('novel.draft_text')
+        }
+
+        if (configRows.some((row: any) => normalizeEntityId(type, String(row?.id || '')) === targetId)) {
+            out.add(type === 'chars' ? 'novel.characters' : 'novel.scenes')
+        }
+
+        const selectedRows = Array.isArray(novel?.snowflake?.[type === 'chars' ? 'selected_character_ids' : 'selected_scene_ids'])
+            ? novel.snowflake[type === 'chars' ? 'selected_character_ids' : 'selected_scene_ids']
+            : []
+        if (selectedRows.some((id: any) => normalizeEntityId(type, String(id || '')) === targetId)) {
+            out.add(type === 'chars' ? 'novel.snowflake.selected_character_ids' : 'novel.snowflake.selected_scene_ids')
+        }
+
+        const walk = (node: any, path: string) => {
+            if (out.size >= 12) return
+            if (typeof node === 'string') {
+                if (
+                    hasEntityReference(node, targetId) ||
+                    hasNamedMentionReference(node, targetName)
+                ) out.add(path)
+                return
+            }
+            if (Array.isArray(node)) {
+                node.forEach((item, idx) => walk(item, `${path}[${idx}]`))
+                return
+            }
+            if (node && typeof node === 'object') {
+                Object.entries(node).forEach(([key, value]) => walk(value, `${path}.${key}`))
+            }
+        }
+
+        walk(novel.snowflake?.plan, 'novel.snowflake.plan')
+    } catch (error) {
+        console.warn('[ScriptEditor] failed to collect novel usage paths', error)
+    }
+    return Array.from(out).slice(0, 12)
+}
+
 const handleDeleteItem = async (type: 'chars' | 'scenes' | 'board', index: number, _item: any) => {
     const confirmed = await showConfirm(t('workbench.scriptEditor.messages.confirmDelete'))
     if (!confirmed) return
@@ -192,6 +281,20 @@ const handleDeleteItem = async (type: 'chars' | 'scenes' | 'board', index: numbe
                      root.storyboard
                      
         if (list) {
+            if ((type === 'chars' || type === 'scenes') && index >= 0 && index < list.length) {
+                const target = list[index]
+                const usagePaths = await collectNovelUsagePaths(type, String(target?.id || ''))
+                if (usagePaths.length > 0) {
+                    const usageLines = usagePaths.map((item) => `- ${item}`).join('\n')
+                    const crossConfirmed = await showConfirm(t('workbench.scriptEditor.messages.crossWorkspaceDeleteConfirm', {
+                        target: type === 'chars'
+                            ? t('workbench.scriptEditor.tabs.characters')
+                            : t('workbench.scriptEditor.tabs.scenes'),
+                        usages: usageLines
+                    }))
+                    if (!crossConfirmed) return
+                }
+            }
             list.splice(index, 1)
             emit('request-save')
             message.success(t('workbench.scriptEditor.messages.deleted'))

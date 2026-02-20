@@ -22,7 +22,7 @@ const { t } = useI18n()
         </div>
 
         <!-- Content -->
-        <p class="text-gray-600 text-sm leading-relaxed pl-1">
+        <p class="text-gray-600 text-sm leading-relaxed pl-1 whitespace-pre-line break-words">
           {{ state.message }}
         </p>
 
